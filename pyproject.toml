@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mevo-urban-mobility-analytics"
+version = "0.1.0"
+description = "Educational analytics and forecasting project for the MEVO bike-sharing system."
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "MEVO Urban Mobility Analytics contributors" },
+]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

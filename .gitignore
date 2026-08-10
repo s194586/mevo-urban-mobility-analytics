@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+credentials
+credentials.*
+secrets
+secrets.*
+*.pem
+*.key
+
+# IDE and editor files
+.idea/
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# AWS / serverless build artifacts
+.aws-sam/
+samconfig.toml
+*.zip
+packaged.yaml
+packaged.yml
+
+# Local project artifacts
+dist/
+build/
+*.egg-info/
