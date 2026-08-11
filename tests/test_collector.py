@@ -38,9 +38,18 @@ class CollectorTests(unittest.TestCase):
             MevoApi(opener=Mock(return_value=bad), retries=0).get_json("https://example.test")
 
     def test_http_error_raises_api_error(self):
+        error = HTTPError("https://example.test", 404, "not found", {}, None)
+        opener = Mock(side_effect=error)
         with self.assertRaises(ApiError):
-            error = HTTPError("https://example.test", 404, "not found", {}, None)
-            MevoApi(opener=Mock(side_effect=error), retries=0).get_json("https://example.test")
+            MevoApi(opener=opener, retries=2, backoff=0).get_json("https://example.test")
+        self.assertEqual(opener.call_count, 1)
+
+    def test_http_5xx_retries_then_succeeds(self):
+        error = HTTPError("https://example.test", 503, "unavailable", {}, None)
+        opener = Mock(side_effect=[error, response({"data": {}})])
+        result = MevoApi(opener=opener, retries=1, backoff=0).get_json("https://example.test")
+        self.assertEqual(result.payload, {"data": {}})
+        self.assertEqual(opener.call_count, 2)
 
     def test_common_collected_at_and_partial_failure(self):
         opener = Mock(side_effect=[
@@ -51,14 +60,33 @@ class CollectorTests(unittest.TestCase):
         result = collect_snapshot(MevoApi(opener=opener, retries=0))
         self.assertEqual(set(result.feeds), {"station_status"})
         self.assertIn("free_bike_status", result.errors)
+        self.assertTrue(result.partial_failure)
+        self.assertFalse(result.total_failure)
         self.assertEqual(result.feeds["station_status"].collected_at, result.collected_at)
         self.assertIsNotNone(result.collected_at.tzinfo)
 
-    def test_free_bike_validation(self):
-        opener = Mock(side_effect=[response(self.discovery), response({"data": {"bikes": []}}), response({"data": {"bikes": [{}]}})])
+    def test_empty_collections_are_valid(self):
+        opener = Mock(side_effect=[response(self.discovery), response({"data": {"stations": [{}]}}), response({"data": {"bikes": []}})])
         result = collect_snapshot(MevoApi(opener=opener, retries=0))
-        self.assertIn("station_status", result.errors)
         self.assertIn("free_bike_status", result.feeds)
+        self.assertEqual(result.feeds["free_bike_status"].records, [])
+
+        opener = Mock(side_effect=[response(self.discovery), response({"data": {"stations": []}}), response({"data": {"bikes": [{}]}})])
+        result = collect_snapshot(MevoApi(opener=opener, retries=0))
+        self.assertEqual(set(result.feeds), {"station_status", "free_bike_status"})
+        self.assertEqual(result.feeds["station_status"].records, [])
+
+    def test_total_failure_for_two_api_errors(self):
+        opener = Mock(side_effect=[response(self.discovery), ApiError("stations failed"), ApiError("bikes failed")])
+        result = collect_snapshot(MevoApi(opener=opener, retries=0))
+        self.assertTrue(result.total_failure)
+        self.assertFalse(result.partial_failure)
+        self.assertEqual(len(result.errors), 2)
+
+    def test_unexpected_programming_error_is_not_swallowed(self):
+        opener = Mock(side_effect=[response(self.discovery), RuntimeError("bug")])
+        with self.assertRaises(RuntimeError):
+            collect_snapshot(MevoApi(opener=opener, retries=0))
 
 
 if __name__ == "__main__":

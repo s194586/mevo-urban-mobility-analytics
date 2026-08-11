@@ -32,7 +32,11 @@ class CollectionResult:
 
     @property
     def partial_failure(self) -> bool:
-        return bool(self.errors)
+        return bool(self.feeds) and bool(self.errors)
+
+    @property
+    def total_failure(self) -> bool:
+        return not self.feeds and bool(self.errors)
 
 
 def _validate_feed(response: JsonResponse, feed_name: str) -> None:
@@ -40,8 +44,8 @@ def _validate_feed(response: JsonResponse, feed_name: str) -> None:
     key = "stations" if feed_name == "station_status" else "bikes"
     if not isinstance(data, dict) or key not in data:
         raise ApiError(f"{feed_name} response has no data.{key} collection")
-    if not isinstance(data[key], list) or not data[key]:
-        raise ApiError(f"{feed_name} data.{key} collection is empty or invalid")
+    if not isinstance(data[key], list):
+        raise ApiError(f"{feed_name} data.{key} collection is not a list")
     if not all(isinstance(record, dict) for record in data[key]):
         raise ApiError(f"{feed_name} data.{key} contains a non-object record")
 
@@ -65,6 +69,6 @@ def collect_snapshot(api: MevoApi | None = None) -> CollectionResult:
                 raw_bytes=response.raw_bytes,
                 parsed=response.payload,
             )
-        except Exception as exc:  # isolate one feed failure from the other
+        except ApiError as exc:  # isolate expected API/validation failures only
             errors[feed_name] = str(exc)
     return CollectionResult(collected_at=collected_at, feeds=feeds, errors=errors)
