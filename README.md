@@ -55,7 +55,7 @@ Everything after the initial repository bootstrap is planned work. No AWS infras
 
 **SPRINT 0 — bootstrap / data collection setup**
 
-This repository currently contains project documentation and minimal Python package scaffolding only. The MEVO API has not been called, and no AWS resources have been created.
+The in-memory MEVO collector core is implemented. It discovers dynamic feed URLs and preserves successful raw payloads; AWS storage and scheduling have not been implemented.
 
 ## Sprint 0 Scope
 
@@ -112,7 +112,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 ```
 
-There are currently no runtime dependencies or test dependencies to install.
+The collector uses only the Python standard library. There are currently no runtime dependencies or test dependencies to install.
 
 ## Security / Secrets
 
