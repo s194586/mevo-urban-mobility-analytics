@@ -53,9 +53,9 @@ Everything after the initial repository bootstrap is planned work. No AWS infras
 
 ## Current Status
 
-**SPRINT 0 — bootstrap / data collection setup**
+**SPRINT 0.3B — raw S3 storage**
 
-The in-memory MEVO collector core is implemented. It discovers dynamic feed URLs and preserves successful raw payloads; AWS storage and scheduling have not been implemented.
+The in-memory MEVO collector core is implemented. It discovers dynamic feed URLs and preserves successful raw payloads. The S3 storage layer compresses raw snapshots in memory and writes them through an injected or default boto3 S3 client. Real AWS uploads have not been performed; Lambda, IAM, and EventBridge are not deployed yet.
 
 ## Sprint 0 Scope
 
@@ -112,7 +112,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 ```
 
-The collector uses only the Python standard library. There are currently no runtime dependencies or test dependencies to install.
+The collector uses the Python standard library plus boto3 for the S3 storage layer. Tests use mocked S3 clients and do not make AWS requests.
 
 ## Security / Secrets
 

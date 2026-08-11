@@ -12,7 +12,9 @@ license = { text = "MIT" }
 authors = [
     { name = "MEVO Urban Mobility Analytics contributors" },
 ]
-dependencies = []
+dependencies = [
+    "boto3>=1.35",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
