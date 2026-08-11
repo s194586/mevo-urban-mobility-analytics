@@ -1,6 +1,6 @@
 import gzip
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 from mevo_collector import FeedSnapshot, S3Storage
@@ -40,6 +40,26 @@ class S3StorageTests(unittest.TestCase):
             "collected-at": "2026-08-12T01:40:12.123456+00:00",
             "source-last-updated": "1723420800",
         })
+
+    def test_non_utc_collected_at_is_normalized_in_key_and_metadata(self):
+        client = Mock()
+        local_time = datetime(2026, 8, 12, 3, 40, 12, 123456, tzinfo=timezone(timedelta(hours=2)))
+        snapshot = self.make_snapshot()
+        snapshot = FeedSnapshot(
+            feed_name=snapshot.feed_name,
+            source_url=snapshot.source_url,
+            collected_at=local_time,
+            source_last_updated=snapshot.source_last_updated,
+            raw_bytes=snapshot.raw_bytes,
+            parsed=snapshot.parsed,
+        )
+
+        result = S3Storage("bucket", s3_client=client).store(snapshot)
+        metadata_time = datetime.fromisoformat(client.put_object.call_args.kwargs["Metadata"]["collected-at"])
+
+        self.assertIn("year=2026/month=08/day=12/2026-08-12T01-40-12.123456Z.json.gz", result.key)
+        self.assertEqual(metadata_time, datetime(2026, 8, 12, 1, 40, 12, 123456, tzinfo=timezone.utc))
+        self.assertEqual(metadata_time, local_time.astimezone(timezone.utc))
 
     def test_source_last_updated_metadata_is_omitted_when_missing(self):
         client = Mock()

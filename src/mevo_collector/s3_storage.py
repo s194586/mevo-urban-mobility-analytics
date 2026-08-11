@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import gzip
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
@@ -30,11 +30,15 @@ class S3Storage:
         self.s3_client = s3_client if s3_client is not None else boto3.client("s3")
 
     @staticmethod
-    def _object_key(snapshot: FeedSnapshot) -> str:
+    def _utc_collected_at(snapshot: FeedSnapshot) -> datetime:
         collected_at = snapshot.collected_at
         if collected_at.tzinfo is None:
             collected_at = collected_at.replace(tzinfo=timezone.utc)
-        collected_at = collected_at.astimezone(timezone.utc)
+        return collected_at.astimezone(timezone.utc)
+
+    @classmethod
+    def _object_key(cls, snapshot: FeedSnapshot) -> str:
+        collected_at = cls._utc_collected_at(snapshot)
         timestamp = collected_at.strftime("%Y-%m-%dT%H-%M-%S.%fZ")
         return (
             f"raw/{snapshot.feed_name}/year={collected_at:%Y}/"
@@ -45,9 +49,10 @@ class S3Storage:
         """Compress and write one snapshot, propagating any S3 exception."""
         compressed = gzip.compress(snapshot.raw_bytes)
         key = self._object_key(snapshot)
+        collected_at = self._utc_collected_at(snapshot)
         metadata = {
             "feed-name": snapshot.feed_name,
-            "collected-at": snapshot.collected_at.isoformat(),
+            "collected-at": collected_at.isoformat(),
         }
         if snapshot.source_last_updated is not None:
             metadata["source-last-updated"] = str(snapshot.source_last_updated)
