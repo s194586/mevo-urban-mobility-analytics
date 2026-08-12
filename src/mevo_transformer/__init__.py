@@ -10,6 +10,7 @@ from .station_information import (
     StationInformationTransformResult,
     transform_station_information,
 )
+from .raw_reader import RawSnapshot, RawSnapshotReadError, read_raw_snapshot
 
 __all__ = [
     "StationStatusTransformResult",
@@ -18,4 +19,7 @@ __all__ = [
     "StationInformationTransformResult",
     "StationInformationValidationError",
     "transform_station_information",
+    "RawSnapshot",
+    "RawSnapshotReadError",
+    "read_raw_snapshot",
 ]
