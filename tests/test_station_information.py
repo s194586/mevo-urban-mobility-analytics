@@ -80,6 +80,18 @@ class StationInformationTransformerTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(StationInformationValidationError):
                 transform_station_information(payload([station(**changes)]), SNAPSHOT_TS)
 
+    def test_missing_station_id_key_is_hard_error(self):
+        value = station()
+        del value["station_id"]
+        with self.assertRaises(StationInformationValidationError):
+            transform_station_information(payload([value]), SNAPSHOT_TS)
+
+    def test_missing_name_key_is_hard_error(self):
+        value = station()
+        del value["name"]
+        with self.assertRaises(StationInformationValidationError):
+            transform_station_information(payload([value]), SNAPSHOT_TS)
+
     def test_coordinate_validation_rejects_range_nan_infinity_and_bool(self):
         for field, value in (("lat", -91), ("lat", 91), ("lon", -181), ("lon", 181),
                              ("lat", math.nan), ("lon", math.inf), ("lat", True), ("lon", False)):
@@ -104,6 +116,10 @@ class StationInformationTransformerTests(unittest.TestCase):
         with self.assertRaises(StationInformationValidationError):
             transform_station_information({"last_updated": 0, "data": {"stations": {}}}, SNAPSHOT_TS)
 
+    def test_naive_snapshot_timestamp_is_value_error(self):
+        with self.assertRaises(ValueError):
+            transform_station_information(payload(), datetime(2026, 8, 12, 1, 40, 12))
+
     def test_metadata_warnings_are_non_fatal(self):
         for changes in ({"version": "2.2", "ttl": 0}, {"ttl": None}, {"ttl": "15"},):
             result = transform_station_information(payload(**changes), SNAPSHOT_TS)
@@ -115,7 +131,9 @@ class StationInformationTransformerTests(unittest.TestCase):
     def test_missing_ttl_is_warning_and_excluded_fields_are_not_cleaned(self):
         value = payload()
         del value["ttl"]
-        row = transform_station_information(value, SNAPSHOT_TS).records[0]
+        result = transform_station_information(value, SNAPSHOT_TS)
+        self.assertTrue(any("ttl" in warning for warning in result.warnings))
+        row = result.records[0]
         self.assertTrue(row)
         self.assertNotIn("station_area", row)
         self.assertNotIn("rental_uris", row)
