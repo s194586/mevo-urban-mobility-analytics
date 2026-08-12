@@ -62,10 +62,24 @@ class StationStatusTransformerTests(unittest.TestCase):
         result = transform_station_status(payload([station(), station("8261")]), SNAPSHOT_TS)
         self.assertEqual([row["station_id"] for row in result.records], ["8260", "8261"])
 
-    def test_missing_bike_and_ebike_normalize_to_zero(self):
-        value = station(num_bikes_available=0, num_vehicles_available=0, vehicle_types_available=[])
+    def test_missing_bike_normalizes_to_zero(self):
+        value = station(
+            num_bikes_available=3,
+            num_vehicles_available=3,
+            vehicle_types_available=[{"vehicle_type_id": "ebike", "count": 3}],
+        )
         result = transform_station_status(payload([value]), SNAPSHOT_TS)
         self.assertEqual(result.records[0]["classic_bikes_available"], 0)
+        self.assertEqual(result.records[0]["ebikes_available"], 3)
+
+    def test_missing_ebike_normalizes_to_zero(self):
+        value = station(
+            num_bikes_available=1,
+            num_vehicles_available=1,
+            vehicle_types_available=[{"vehicle_type_id": "bike", "count": 1}],
+        )
+        result = transform_station_status(payload([value]), SNAPSHOT_TS)
+        self.assertEqual(result.records[0]["classic_bikes_available"], 1)
         self.assertEqual(result.records[0]["ebikes_available"], 0)
 
     def test_duplicate_station_id_is_hard_error(self):
@@ -97,9 +111,16 @@ class StationStatusTransformerTests(unittest.TestCase):
 
     def test_unknown_vehicle_type_is_warning(self):
         types = station()["vehicle_types_available"] + [{"vehicle_type_id": "cargo", "count": 1}]
-        result = transform_station_status(payload([station(vehicle_types_available=types)]), SNAPSHOT_TS)
+        value = station(num_bikes_available=5, vehicle_types_available=types)
+        result = transform_station_status(payload([value]), SNAPSHOT_TS)
         self.assertEqual(len(result.records), 1)
         self.assertTrue(any("cargo" in warning for warning in result.warnings))
+
+    def test_unknown_vehicle_type_with_mismatched_total_is_hard_error(self):
+        types = station()["vehicle_types_available"] + [{"vehicle_type_id": "cargo", "count": 1}]
+        value = station(num_bikes_available=6, vehicle_types_available=types)
+        with self.assertRaises(StationStatusValidationError):
+            transform_station_status(payload([value]), SNAPSHOT_TS)
 
     def test_vehicle_count_mismatch_is_warning(self):
         result = transform_station_status(payload([station(num_vehicles_available=3)]), SNAPSHOT_TS)

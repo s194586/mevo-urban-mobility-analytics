@@ -140,6 +140,8 @@ def transform_station_status(
                 f"{location}.vehicle_types_available must be a list"
             )
         counts: dict[str, int] = {}
+        total_vehicle_count = 0
+        has_unknown_vehicle_type = False
         for vehicle_index, vehicle in enumerate(vehicle_types):
             vehicle_location = f"{location}.vehicle_types_available[{vehicle_index}]"
             if not isinstance(vehicle, dict):
@@ -153,18 +155,25 @@ def transform_station_status(
                 raise StationStatusValidationError(
                     f"duplicate vehicle_type_id {vehicle_id!r} at {location}"
                 )
-            counts[vehicle_id] = _non_negative_int(
+            count = _non_negative_int(
                 _required(vehicle, "count", vehicle_location),
                 f"{vehicle_location}.count",
             )
+            counts[vehicle_id] = count
+            total_vehicle_count += count
             if vehicle_id not in {"bike", "ebike"}:
+                has_unknown_vehicle_type = True
                 warnings.append(f"{location} contains unknown vehicle_type_id {vehicle_id!r}")
 
         classic = counts.get("bike", 0)
         ebikes = counts.get("ebike", 0)
-        if classic + ebikes != num_bikes:
+        if has_unknown_vehicle_type:
+            counts_match_bikes = total_vehicle_count == num_bikes
+        else:
+            counts_match_bikes = classic + ebikes == num_bikes
+        if not counts_match_bikes:
             raise StationStatusValidationError(
-                f"{location} bike and ebike counts do not equal num_bikes_available"
+                f"{location} vehicle type counts do not equal num_bikes_available"
             )
 
         records.append({
