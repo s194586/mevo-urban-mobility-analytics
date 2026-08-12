@@ -11,6 +11,11 @@ from .s3_storage import S3Storage
 
 logger = logging.getLogger(__name__)
 
+MODE_FEEDS = {
+    "dynamic": ("station_status", "free_bike_status"),
+    "reference": ("station_information", "vehicle_types"),
+}
+
 
 class LambdaInvocationError(RuntimeError):
     """Raised when collection completed with feed errors."""
@@ -31,13 +36,16 @@ def _result_base(collection: CollectionResult, status: str) -> dict[str, Any]:
 
 def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
     """Collect MEVO feeds and store successful snapshots in S3."""
-    logger.info("Starting MEVO collection invocation")
+    mode = event.get("mode", "dynamic") if isinstance(event, dict) else "dynamic"
+    if mode not in MODE_FEEDS:
+        raise ValueError(f"Unsupported collection mode: {mode!r}")
+    logger.info("Starting MEVO collection invocation mode=%s", mode)
     try:
         bucket = os.environ["MEVO_RAW_BUCKET"]
     except KeyError as exc:
         raise RuntimeError("Missing required environment variable: MEVO_RAW_BUCKET") from exc
 
-    collection = collect_snapshot()
+    collection = collect_snapshot(feed_names=MODE_FEEDS[mode])
     if collection.total_failure:
         result = _result_base(collection, "total_failure")
         logger.error("Total collection failure: %s", collection.errors)

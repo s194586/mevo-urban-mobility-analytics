@@ -66,6 +66,21 @@ class S3StorageTests(unittest.TestCase):
         S3Storage("bucket", s3_client=client).store(self.make_snapshot(None))
         self.assertNotIn("source-last-updated", client.put_object.call_args.kwargs["Metadata"])
 
+    def test_new_feed_names_use_the_same_raw_key_format(self):
+        client = Mock()
+        for feed_name in ("station_information", "vehicle_types"):
+            snapshot = self.make_snapshot()
+            snapshot = FeedSnapshot(
+                feed_name=feed_name,
+                source_url=snapshot.source_url,
+                collected_at=snapshot.collected_at,
+                source_last_updated=None,
+                raw_bytes=snapshot.raw_bytes,
+                parsed=snapshot.parsed,
+            )
+            result = S3Storage("bucket", s3_client=client).store(snapshot)
+            self.assertTrue(result.key.startswith(f"raw/{feed_name}/year=2026/month=08/day=12/"))
+
     def test_s3_error_is_propagated(self):
         client = Mock()
         client.put_object.side_effect = RuntimeError("S3 failure")

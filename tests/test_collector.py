@@ -21,7 +21,57 @@ class CollectorTests(unittest.TestCase):
         self.discovery = {"data": {"pl": {"feeds": [
             {"name": "station_status", "url": "https://example.test/stations.json"},
             {"name": "free_bike_status", "url": "https://example.test/bikes.json"},
+            {"name": "station_information", "url": "https://example.test/station-information.json"},
+            {"name": "vehicle_types", "url": "https://example.test/vehicle-types.json"},
         ]}}}
+
+    def test_default_collect_snapshot_fetches_only_dynamic_feeds(self):
+        opener = Mock(side_effect=[
+            response(self.discovery),
+            response({"data": {"stations": []}}),
+            response({"data": {"bikes": []}}),
+        ])
+        result = collect_snapshot(MevoApi(opener=opener, retries=0))
+        self.assertEqual(set(result.feeds), {"station_status", "free_bike_status"})
+        self.assertEqual(opener.call_count, 3)
+
+    def test_reference_feeds_and_records(self):
+        opener = Mock(side_effect=[
+            response(self.discovery),
+            response({"data": {"stations": [{"station_id": "1"}]}}),
+            response({"data": {"vehicle_types": [{"vehicle_type_id": "bike"}]}}),
+        ])
+        result = collect_snapshot(
+            MevoApi(opener=opener, retries=0),
+            feed_names=("station_information", "vehicle_types"),
+        )
+        self.assertEqual(result.feeds["station_information"].records, [{"station_id": "1"}])
+        self.assertEqual(result.feeds["vehicle_types"].records, [{"vehicle_type_id": "bike"}])
+
+    def test_reference_feed_validation_uses_expected_record_keys(self):
+        opener = Mock(side_effect=[
+            response(self.discovery),
+            response({"data": {"bikes": []}}),
+        ])
+        result = collect_snapshot(
+            MevoApi(opener=opener, retries=0),
+            feed_names=("station_information",),
+        )
+        self.assertEqual(result.errors, {
+            "station_information": "station_information response has no data.stations collection",
+        })
+
+        opener = Mock(side_effect=[
+            response(self.discovery),
+            response({"data": {"stations": []}}),
+        ])
+        result = collect_snapshot(
+            MevoApi(opener=opener, retries=0),
+            feed_names=("vehicle_types",),
+        )
+        self.assertEqual(result.errors, {
+            "vehicle_types": "vehicle_types response has no data.vehicle_types collection",
+        })
 
     def test_discovery_header_status_and_raw_bytes(self):
         opener = Mock(side_effect=[response(self.discovery), response({"data": {"stations": [{}]}})])
