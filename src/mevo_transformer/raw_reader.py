@@ -34,7 +34,9 @@ _TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%S.%fZ"
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}Z$")
 
 
-def read_raw_snapshot(compressed_bytes: bytes, object_key: str) -> RawSnapshot:
+def read_raw_snapshot(
+    compressed_bytes: bytes | bytearray | memoryview, object_key: str
+) -> RawSnapshot:
     """Decode a gzip-compressed JSON RAW snapshot from bytes.
 
     The feed contract is intentionally not validated here; syntactically valid
