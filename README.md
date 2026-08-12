@@ -49,7 +49,8 @@ Rebalancing recommendations
 Dashboard
 ```
 
-Everything after the initial repository bootstrap is planned work. No AWS infrastructure or data collection has been implemented yet.
+The collector, S3 storage layer, and Lambda handler are implemented locally. The
+Lambda resource exists in AWS, but deployment and real data collection remain pending.
 
 ## Current Status
 
@@ -121,3 +122,10 @@ Never commit AWS credentials, GitHub tokens, passwords, API tokens, private keys
 ## Project Status
 
 This is an active learning project. The repository is at the bootstrap stage and is ready for the next explicitly approved stage.
+
+## Lambda Status
+
+The Lambda handler `mevo_collector.lambda_handler.lambda_handler` is prepared and the
+local deployment package can be built with `scripts/build_lambda.ps1`. The Lambda
+resource exists in AWS, but this package has not been deployed or tested there yet.
+EventBridge is still not configured, and no real AWS upload has been performed.
