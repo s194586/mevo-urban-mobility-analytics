@@ -1,12 +1,22 @@
-"""In-memory collection of one MEVO dynamic snapshot."""
+"""In-memory collection of MEVO feed snapshots."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections.abc import Iterable
 from typing import Any
 
 from .api import ApiError, JsonResponse, MevoApi
+
+
+FEED_RECORD_KEYS: dict[str, str] = {
+    "station_status": "stations",
+    "free_bike_status": "bikes",
+    "station_information": "stations",
+    "vehicle_types": "vehicle_types",
+}
+DEFAULT_FEEDS = ("station_status", "free_bike_status")
 
 
 @dataclass(frozen=True)
@@ -20,7 +30,7 @@ class FeedSnapshot:
 
     @property
     def records(self) -> list[dict[str, Any]]:
-        key = "stations" if self.feed_name == "station_status" else "bikes"
+        key = FEED_RECORD_KEYS[self.feed_name]
         return self.parsed["data"][key]
 
 
@@ -41,7 +51,7 @@ class CollectionResult:
 
 def _validate_feed(response: JsonResponse, feed_name: str) -> None:
     data = response.payload.get("data")
-    key = "stations" if feed_name == "station_status" else "bikes"
+    key = FEED_RECORD_KEYS[feed_name]
     if not isinstance(data, dict) or key not in data:
         raise ApiError(f"{feed_name} response has no data.{key} collection")
     if not isinstance(data[key], list):
@@ -50,15 +60,21 @@ def _validate_feed(response: JsonResponse, feed_name: str) -> None:
         raise ApiError(f"{feed_name} data.{key} contains a non-object record")
 
 
-def collect_snapshot(api: MevoApi | None = None) -> CollectionResult:
-    """Fetch both dynamic feeds, retaining successful feeds after partial failure."""
+def collect_snapshot(
+    api: MevoApi | None = None,
+    feed_names: Iterable[str] | None = None,
+) -> CollectionResult:
+    """Fetch selected feeds, retaining successful feeds after partial failure."""
     client = api or MevoApi()
     collected_at = datetime.now(timezone.utc)
     discovery = client.get_discovery().payload
     feeds: dict[str, FeedSnapshot] = {}
     errors: dict[str, str] = {}
-    for feed_name in ("station_status", "free_bike_status"):
+    selected_feeds = tuple(feed_names) if feed_names is not None else DEFAULT_FEEDS
+    for feed_name in selected_feeds:
         try:
+            if feed_name not in FEED_RECORD_KEYS:
+                raise ValueError(f"Unsupported feed: {feed_name}")
             response = client.get_feed(discovery, feed_name)
             _validate_feed(response, feed_name)
             feeds[feed_name] = FeedSnapshot(

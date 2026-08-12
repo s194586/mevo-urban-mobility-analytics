@@ -10,7 +10,12 @@ from mevo_collector.s3_storage import StoredObject
 
 
 def snapshot(feed_name: str) -> FeedSnapshot:
-    key = "stations" if feed_name == "station_status" else "bikes"
+    key = {
+        "station_status": "stations",
+        "free_bike_status": "bikes",
+        "station_information": "stations",
+        "vehicle_types": "vehicle_types",
+    }[feed_name]
     return FeedSnapshot(
         feed_name=feed_name,
         source_url=f"https://example.test/{feed_name}.json",
@@ -51,6 +56,33 @@ class LambdaHandlerTests(unittest.TestCase):
         self.assertEqual(result["errors"], {})
         json.dumps(result)
         storage_class.assert_called_once_with("bucket")
+
+    @patch("mevo_collector.lambda_handler.S3Storage")
+    @patch("mevo_collector.lambda_handler.collect_snapshot")
+    def test_empty_event_uses_dynamic_mode(self, collect, storage_class):
+        collect.return_value = self.collection(["station_status", "free_bike_status"])
+        storage_class.return_value.store.side_effect = lambda item: StoredObject("bucket", "key", 1, 1)
+
+        with patch.dict(os.environ, {"MEVO_RAW_BUCKET": "bucket"}, clear=True):
+            lambda_handler({}, None)
+
+        collect.assert_called_once_with(feed_names=("station_status", "free_bike_status"))
+
+    @patch("mevo_collector.lambda_handler.collect_snapshot")
+    def test_reference_mode_collects_reference_feeds(self, collect):
+        collect.return_value = self.collection(["station_information", "vehicle_types"])
+
+        with patch.dict(os.environ, {"MEVO_RAW_BUCKET": "bucket"}, clear=True):
+            with patch("mevo_collector.lambda_handler.S3Storage") as storage_class:
+                storage_class.return_value.store.side_effect = lambda item: StoredObject("bucket", "key", 1, 1)
+                lambda_handler({"mode": "reference"}, None)
+
+        collect.assert_called_once_with(feed_names=("station_information", "vehicle_types"))
+
+    def test_unknown_mode_is_a_clear_error(self):
+        with patch.dict(os.environ, {"MEVO_RAW_BUCKET": "bucket"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "Unsupported collection mode"):
+                lambda_handler({"mode": "weekly"}, None)
 
     @patch("mevo_collector.lambda_handler.S3Storage")
     @patch("mevo_collector.lambda_handler.collect_snapshot")
