@@ -40,7 +40,11 @@ class S3BatchStorage:
 
     @staticmethod
     def _validate_feed_name(feed_name: str) -> None:
-        if not isinstance(feed_name, str) or not feed_name or "/" in feed_name:
+        if (
+            not isinstance(feed_name, str)
+            or not feed_name.strip()
+            or "/" in feed_name
+        ):
             raise S3BatchStorageError(
                 "feed_name must be a non-empty string without '/': "
                 f"{feed_name!r}"
@@ -86,8 +90,11 @@ class S3BatchStorage:
             if not response.get("IsTruncated", False):
                 break
             continuation_token = response.get("NextContinuationToken")
-            if continuation_token is None:
-                break
+            if not isinstance(continuation_token, str) or not continuation_token:
+                raise S3BatchStorageError(
+                    "truncated S3 listing is missing a non-empty "
+                    "NextContinuationToken"
+                )
 
         raw_objects = []
         for key in sorted(keys):

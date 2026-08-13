@@ -11,10 +11,13 @@ from mevo_transformer import (
 
 
 class Body:
-    def __init__(self, value):
+    def __init__(self, value, error=None):
         self.value = value
+        self.error = error
 
     def read(self):
+        if self.error:
+            raise self.error
         return self.value
 
 
@@ -27,6 +30,7 @@ class FakeS3:
         self.put_calls = []
         self.list_error = None
         self.get_error = None
+        self.body_error = None
         self.put_error = None
 
     def list_objects_v2(self, **kwargs):
@@ -39,7 +43,7 @@ class FakeS3:
         self.get_calls.append(kwargs)
         if self.get_error:
             raise self.get_error
-        return {"Body": Body(self.objects[kwargs["Key"]])}
+        return {"Body": Body(self.objects[kwargs["Key"]], self.body_error)}
 
     def put_object(self, **kwargs):
         self.put_calls.append(kwargs)
@@ -78,10 +82,41 @@ class S3BatchStorageTests(unittest.TestCase):
 
     def test_invalid_feed_names_raise(self):
         storage = S3BatchStorage("bucket", FakeS3())
-        for feed_name in ("", "station/status"):
+        for feed_name in ("", "   ", "station/status"):
             with self.subTest(feed_name=feed_name):
                 with self.assertRaises(S3BatchStorageError):
                     storage.load_raw_objects(feed_name, date(2026, 8, 13))
+
+    def test_truncated_listing_without_continuation_token_raises(self):
+        client = FakeS3(
+            pages=[
+                {
+                    "Contents": [{"Key": "partial.json.gz"}],
+                    "IsTruncated": True,
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(
+            S3BatchStorageError, "missing a non-empty NextContinuationToken"
+        ):
+            S3BatchStorage("bucket", client).load_raw_objects(
+                "station_status", date(2026, 8, 13)
+            )
+
+    def test_body_read_error_propagates_unchanged(self):
+        error = RuntimeError("body read failed")
+        client = FakeS3(
+            pages=[{"Contents": [{"Key": "snapshot.json.gz"}], "IsTruncated": False}],
+            objects={"snapshot.json.gz": b"compressed"},
+        )
+        client.body_error = error
+
+        with self.assertRaises(RuntimeError) as raised:
+            S3BatchStorage("bucket", client).load_raw_objects(
+                "station_status", date(2026, 8, 13)
+            )
+        self.assertIs(raised.exception, error)
 
     def test_stores_station_status_with_contract_and_metadata(self):
         client = FakeS3()
