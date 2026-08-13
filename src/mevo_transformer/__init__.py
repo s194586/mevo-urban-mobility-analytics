@@ -11,6 +11,12 @@ from .station_information import (
     transform_station_information,
 )
 from .raw_reader import RawSnapshot, RawSnapshotReadError, read_raw_snapshot
+from .parquet_writer import (
+    DIM_STATION_SCHEMA,
+    FACT_STATION_STATUS_SCHEMA,
+    write_station_information_parquet,
+    write_station_status_parquet,
+)
 
 __all__ = [
     "StationStatusTransformResult",
@@ -22,4 +28,8 @@ __all__ = [
     "RawSnapshot",
     "RawSnapshotReadError",
     "read_raw_snapshot",
+    "DIM_STATION_SCHEMA",
+    "FACT_STATION_STATUS_SCHEMA",
+    "write_station_information_parquet",
+    "write_station_status_parquet",
 ]
