@@ -25,6 +25,7 @@ from .daily_batch import (
     build_station_status_daily_batch,
 )
 from .s3_batch_storage import S3BatchStorage, S3BatchStorageError, StoredCleanedObject
+from .daily_job import DailyJobError, DailyJobResult, run_daily_batch
 
 __all__ = [
     "StationStatusTransformResult",
@@ -48,4 +49,7 @@ __all__ = [
     "S3BatchStorage",
     "S3BatchStorageError",
     "StoredCleanedObject",
+    "DailyJobResult",
+    "DailyJobError",
+    "run_daily_batch",
 ]
