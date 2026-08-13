@@ -49,6 +49,15 @@ def read(data):
 
 
 class ParquetWriterTests(unittest.TestCase):
+    def test_fact_schema_nullability_is_non_nullable_for_all_fields(self):
+        self.assertTrue(all(not field.nullable for field in FACT_STATION_STATUS_SCHEMA))
+
+    def test_dim_schema_nullability_matches_cleaned_contract(self):
+        nullable_fields = {"address", "cross_street"}
+        for field in DIM_STATION_SCHEMA:
+            with self.subTest(field=field.name):
+                self.assertEqual(field.nullable, field.name in nullable_fields)
+
     def test_status_round_trip_schema_values_and_magic_bytes(self):
         table = read(write_station_status_parquet([STATUS_RECORD]))
         self.assertEqual(table.schema, FACT_STATION_STATUS_SCHEMA)

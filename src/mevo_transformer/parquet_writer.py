@@ -11,32 +11,32 @@ import pyarrow.parquet as pq
 
 FACT_STATION_STATUS_SCHEMA = pa.schema(
     [
-        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC")),
-        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC")),
-        pa.field("station_id", pa.string()),
-        pa.field("last_reported", pa.timestamp("us", tz="UTC")),
-        pa.field("is_installed", pa.bool_()),
-        pa.field("is_renting", pa.bool_()),
-        pa.field("is_returning", pa.bool_()),
-        pa.field("bikes_available", pa.int64()),
-        pa.field("classic_bikes_available", pa.int64()),
-        pa.field("ebikes_available", pa.int64()),
-        pa.field("docks_available", pa.int64()),
+        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("station_id", pa.string(), nullable=False),
+        pa.field("last_reported", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("is_installed", pa.bool_(), nullable=False),
+        pa.field("is_renting", pa.bool_(), nullable=False),
+        pa.field("is_returning", pa.bool_(), nullable=False),
+        pa.field("bikes_available", pa.int64(), nullable=False),
+        pa.field("classic_bikes_available", pa.int64(), nullable=False),
+        pa.field("ebikes_available", pa.int64(), nullable=False),
+        pa.field("docks_available", pa.int64(), nullable=False),
     ]
 )
 
 DIM_STATION_SCHEMA = pa.schema(
     [
-        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC")),
-        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC")),
-        pa.field("station_id", pa.string()),
-        pa.field("station_name", pa.string()),
-        pa.field("address", pa.string()),
-        pa.field("cross_street", pa.string()),
-        pa.field("latitude", pa.float64()),
-        pa.field("longitude", pa.float64()),
-        pa.field("capacity", pa.int64()),
-        pa.field("is_virtual_station", pa.bool_()),
+        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("station_id", pa.string(), nullable=False),
+        pa.field("station_name", pa.string(), nullable=False),
+        pa.field("address", pa.string(), nullable=True),
+        pa.field("cross_street", pa.string(), nullable=True),
+        pa.field("latitude", pa.float64(), nullable=False),
+        pa.field("longitude", pa.float64(), nullable=False),
+        pa.field("capacity", pa.int64(), nullable=False),
+        pa.field("is_virtual_station", pa.bool_(), nullable=False),
     ]
 )
 
@@ -57,4 +57,3 @@ def write_station_status_parquet(records: Iterable[Mapping[str, Any]]) -> bytes:
 def write_station_information_parquet(records: Iterable[Mapping[str, Any]]) -> bytes:
     """Return station information records as an in-memory Snappy Parquet file."""
     return _write_parquet(records, DIM_STATION_SCHEMA)
-
