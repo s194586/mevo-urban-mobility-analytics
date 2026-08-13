@@ -17,6 +17,13 @@ from .parquet_writer import (
     write_station_information_parquet,
     write_station_status_parquet,
 )
+from .daily_batch import (
+    DailyBatchError,
+    DailyBatchResult,
+    RawObject,
+    build_station_information_daily_batch,
+    build_station_status_daily_batch,
+)
 
 __all__ = [
     "StationStatusTransformResult",
@@ -32,4 +39,9 @@ __all__ = [
     "FACT_STATION_STATUS_SCHEMA",
     "write_station_information_parquet",
     "write_station_status_parquet",
+    "DailyBatchError",
+    "DailyBatchResult",
+    "RawObject",
+    "build_station_information_daily_batch",
+    "build_station_status_daily_batch",
 ]
