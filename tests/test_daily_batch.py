@@ -110,6 +110,19 @@ class DailyBatchTests(unittest.TestCase):
         self.assertEqual(table.schema, DIM_STATION_SCHEMA)
         self.assertEqual([row["station_id"] for row in table.to_pylist()], ["A", "A", "B"])
 
+    def test_single_station_information_snapshot_has_expected_result_and_schema(self):
+        raw_object = RawObject(
+            key("station_information", "2026-08-12T01-00-00.000000Z"),
+            compressed(payload([info_station("A")])),
+        )
+
+        result = build_station_information_daily_batch([raw_object])
+        table = pq.read_table(BytesIO(result.parquet_bytes))
+
+        self.assertEqual(result.snapshot_count, 1)
+        self.assertEqual(result.row_count, 1)
+        self.assertEqual(table.schema, DIM_STATION_SCHEMA)
+
     def test_empty_mismatch_cross_day_and_duplicate_are_batch_errors(self):
         with self.assertRaises(DailyBatchError):
             build_station_status_daily_batch([])
@@ -144,6 +157,7 @@ class DailyBatchTests(unittest.TestCase):
         result = build_station_status_daily_batch([raw])
 
         self.assertEqual(raw, before)
+        self.assertIsInstance(result.warnings, tuple)
         self.assertTrue(any(warning.startswith(raw.object_key + ": ") for warning in result.warnings))
         self.assertTrue(any("ttl is unusual" in warning for warning in result.warnings))
 

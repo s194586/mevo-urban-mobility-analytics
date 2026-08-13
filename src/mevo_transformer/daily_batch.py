@@ -36,7 +36,7 @@ class DailyBatchResult:
     snapshot_count: int
     row_count: int
     parquet_bytes: bytes
-    warnings: list[str]
+    warnings: tuple[str, ...]
 
 
 def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> DailyBatchResult:
@@ -90,7 +90,7 @@ def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> 
         snapshot_count=len(snapshots),
         row_count=len(records),
         parquet_bytes=parquet_bytes,
-        warnings=warnings,
+        warnings=tuple(warnings),
     )
 
 
