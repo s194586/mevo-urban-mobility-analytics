@@ -11,10 +11,10 @@ import pyarrow.parquet as pq
 
 FACT_STATION_STATUS_SCHEMA = pa.schema(
     [
-        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC"), nullable=False),
-        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("snapshot_ts", pa.timestamp("ms", tz="UTC"), nullable=False),
+        pa.field("feed_last_updated", pa.timestamp("ms", tz="UTC"), nullable=False),
         pa.field("station_id", pa.string(), nullable=False),
-        pa.field("last_reported", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("last_reported", pa.timestamp("ms", tz="UTC"), nullable=False),
         pa.field("is_installed", pa.bool_(), nullable=False),
         pa.field("is_renting", pa.bool_(), nullable=False),
         pa.field("is_returning", pa.bool_(), nullable=False),
@@ -27,8 +27,8 @@ FACT_STATION_STATUS_SCHEMA = pa.schema(
 
 DIM_STATION_SCHEMA = pa.schema(
     [
-        pa.field("snapshot_ts", pa.timestamp("us", tz="UTC"), nullable=False),
-        pa.field("feed_last_updated", pa.timestamp("us", tz="UTC"), nullable=False),
+        pa.field("snapshot_ts", pa.timestamp("ms", tz="UTC"), nullable=False),
+        pa.field("feed_last_updated", pa.timestamp("ms", tz="UTC"), nullable=False),
         pa.field("station_id", pa.string(), nullable=False),
         pa.field("station_name", pa.string(), nullable=False),
         pa.field("address", pa.string(), nullable=True),

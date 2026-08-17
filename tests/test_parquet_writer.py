@@ -14,8 +14,9 @@ from mevo_transformer import (
 )
 
 
-SNAPSHOT_TS = datetime(2026, 8, 12, 1, 40, 12, tzinfo=timezone.utc)
+SNAPSHOT_TS = datetime(2026, 8, 12, 1, 40, 12, 345678, tzinfo=timezone.utc)
 FEED_TS = datetime(2026, 8, 12, 12, 18, tzinfo=timezone.utc)
+TIMESTAMP_MS = pa.timestamp("ms", tz="UTC")
 
 STATUS_RECORD = {
     "snapshot_ts": SNAPSHOT_TS,
@@ -49,6 +50,27 @@ def read(data):
 
 
 class ParquetWriterTests(unittest.TestCase):
+    def test_timestamp_fields_use_athena_millisecond_precision(self):
+        expected_fact_fields = {
+            "snapshot_ts",
+            "feed_last_updated",
+            "last_reported",
+        }
+        expected_dim_fields = {"snapshot_ts", "feed_last_updated"}
+
+        for field_name in expected_fact_fields:
+            with self.subTest(schema="fact", field=field_name):
+                self.assertEqual(
+                    FACT_STATION_STATUS_SCHEMA.field(field_name).type,
+                    TIMESTAMP_MS,
+                )
+        for field_name in expected_dim_fields:
+            with self.subTest(schema="dim", field=field_name):
+                self.assertEqual(
+                    DIM_STATION_SCHEMA.field(field_name).type,
+                    TIMESTAMP_MS,
+                )
+
     def test_fact_schema_nullability_is_non_nullable_for_all_fields(self):
         self.assertTrue(all(not field.nullable for field in FACT_STATION_STATUS_SCHEMA))
 
@@ -62,9 +84,18 @@ class ParquetWriterTests(unittest.TestCase):
         table = read(write_station_status_parquet([STATUS_RECORD]))
         self.assertEqual(table.schema, FACT_STATION_STATUS_SCHEMA)
         self.assertEqual(table.column_names, list(FACT_STATION_STATUS_SCHEMA.names))
-        self.assertEqual(table.to_pylist(), [STATUS_RECORD])
+        expected_status = {**STATUS_RECORD, "snapshot_ts": SNAPSHOT_TS.replace(microsecond=345000)}
+        self.assertEqual(table.to_pylist(), [expected_status])
         self.assertEqual(table["snapshot_ts"][0].as_py().utcoffset().total_seconds(), 0)
         self.assertTrue(write_station_status_parquet([STATUS_RECORD]).startswith(b"PAR1"))
+
+    def test_microseconds_are_truncated_to_milliseconds_when_written(self):
+        table = read(write_station_status_parquet([STATUS_RECORD]))
+        written_snapshot_ts = table["snapshot_ts"][0].as_py()
+
+        self.assertEqual(written_snapshot_ts, SNAPSHOT_TS.replace(microsecond=345000))
+        self.assertEqual(written_snapshot_ts.second, SNAPSHOT_TS.second)
+        self.assertEqual(written_snapshot_ts.microsecond % 1000, 0)
 
     def test_information_round_trip_schema_values_and_nullable_fields(self):
         table = read(write_station_information_parquet([INFO_RECORD]))
