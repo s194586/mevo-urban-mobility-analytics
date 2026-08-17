@@ -126,8 +126,10 @@ class S3BatchStorage:
             for key in self._list_raw_keys(prefix):
                 try:
                     parsed_key = parse_raw_object_key(key)
-                except RawSnapshotReadError:
-                    continue
+                except RawSnapshotReadError as exc:
+                    raise S3BatchStorageError(
+                        f"invalid RAW object key {key!r}: {exc}"
+                    ) from exc
                 if start_utc <= parsed_key.snapshot_ts < end_utc:
                     candidates.append((key, parsed_key.snapshot_ts))
 

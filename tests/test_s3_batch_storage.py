@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from mevo_transformer import (
     DailyBatchResult,
     RawObject,
+    RawSnapshotReadError,
     S3BatchStorage,
     S3BatchStorageError,
     StoredCleanedObject,
@@ -116,6 +117,27 @@ class S3BatchStorageTests(unittest.TestCase):
             ],
         )
         self.assertEqual([call["Key"] for call in client.get_calls], [at_start, before_end])
+
+    def test_window_fails_on_malformed_raw_key_before_get_object(self):
+        malformed_key = (
+            "raw/station_status/year=2026/month=08/day=15/"
+            "not-a-valid-raw-key.json.gz"
+        )
+        client = FakeS3(
+            pages=[
+                {"Contents": [{"Key": malformed_key}], "IsTruncated": False}
+            ]
+        )
+
+        with self.assertRaisesRegex(S3BatchStorageError, malformed_key) as raised:
+            S3BatchStorage("bucket", client).load_raw_objects_for_window(
+                "station_status",
+                datetime(2026, 8, 15, 22, tzinfo=UTC),
+                datetime(2026, 8, 16, 22, tzinfo=UTC),
+            )
+
+        self.assertIsInstance(raised.exception.__cause__, RawSnapshotReadError)
+        self.assertEqual(client.get_calls, [])
 
     def test_loads_station_information_prefix_and_empty_prefix(self):
         client = FakeS3(pages=[{"Contents": [], "IsTruncated": False}])
