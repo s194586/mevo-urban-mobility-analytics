@@ -74,11 +74,11 @@ class DailyBatchTests(unittest.TestCase):
             compressed(payload([status_station("A")])),
         )
 
-        result = build_station_status_daily_batch([late, early])
+        result = build_station_status_daily_batch([late, early], date(2026, 8, 12))
         table = pq.read_table(BytesIO(result.parquet_bytes))
 
         self.assertEqual(result.feed_name, "station_status")
-        self.assertEqual(result.date, date(2026, 8, 12))
+        self.assertEqual(result.local_date, date(2026, 8, 12))
         self.assertEqual(result.snapshot_count, 2)
         self.assertEqual(result.row_count, 3)
         self.assertEqual(table.schema, FACT_STATION_STATUS_SCHEMA)
@@ -102,7 +102,7 @@ class DailyBatchTests(unittest.TestCase):
                 compressed(payload([info_station("A")])),
             ),
         ]
-        result = build_station_information_daily_batch(objects)
+        result = build_station_information_daily_batch(objects, date(2026, 8, 12))
         table = pq.read_table(BytesIO(result.parquet_bytes))
 
         self.assertEqual(result.snapshot_count, 2)
@@ -116,7 +116,7 @@ class DailyBatchTests(unittest.TestCase):
             compressed(payload([info_station("A")])),
         )
 
-        result = build_station_information_daily_batch([raw_object])
+        result = build_station_information_daily_batch([raw_object], date(2026, 8, 12))
         table = pq.read_table(BytesIO(result.parquet_bytes))
 
         self.assertEqual(result.snapshot_count, 1)
@@ -125,14 +125,14 @@ class DailyBatchTests(unittest.TestCase):
 
     def test_empty_mismatch_cross_day_and_duplicate_are_batch_errors(self):
         with self.assertRaises(DailyBatchError):
-            build_station_status_daily_batch([])
+            build_station_status_daily_batch([], date(2026, 8, 12))
 
         info_object = RawObject(
             key("station_information", "2026-08-12T01-00-00.000000Z"),
             compressed(payload([info_station("A")])),
         )
         with self.assertRaises(DailyBatchError):
-            build_station_status_daily_batch([info_object])
+            build_station_status_daily_batch([info_object], date(2026, 8, 12))
 
         next_day = RawObject(
             key("station_status", "2026-08-13T01-00-00.000000Z", day="13"),
@@ -143,9 +143,40 @@ class DailyBatchTests(unittest.TestCase):
             compressed(payload([status_station("A")])),
         )
         with self.assertRaises(DailyBatchError):
-            build_station_status_daily_batch([first_day, next_day])
+            build_station_status_daily_batch([first_day, next_day], date(2026, 8, 12))
         with self.assertRaises(DailyBatchError):
-            build_station_status_daily_batch([first_day, copy.copy(first_day)])
+            build_station_status_daily_batch(
+                [first_day, copy.copy(first_day)], date(2026, 8, 12)
+            )
+
+    def test_one_local_day_can_span_two_utc_partition_dates(self):
+        previous_utc_day = RawObject(
+            key(
+                "station_status",
+                "2026-08-11T23-00-00.000000Z",
+                day="11",
+            ),
+            compressed(payload([status_station("A")])),
+        )
+        current_utc_day = RawObject(
+            key("station_status", "2026-08-12T01-00-00.000000Z"),
+            compressed(payload([status_station("A")])),
+        )
+
+        result = build_station_status_daily_batch(
+            [current_utc_day, previous_utc_day], date(2026, 8, 12)
+        )
+
+        self.assertEqual(result.local_date, date(2026, 8, 12))
+        self.assertEqual(result.snapshot_count, 2)
+
+    def test_snapshot_outside_local_date_is_a_batch_error(self):
+        raw = RawObject(
+            key("station_status", "2026-08-12T22-00-00.000000Z"),
+            compressed(payload([status_station("A")])),
+        )
+        with self.assertRaises(DailyBatchError):
+            build_station_status_daily_batch([raw], date(2026, 8, 12))
 
     def test_warnings_are_prefixed_and_input_is_not_mutated(self):
         raw = RawObject(
@@ -154,7 +185,7 @@ class DailyBatchTests(unittest.TestCase):
         )
         before = copy.deepcopy(raw)
 
-        result = build_station_status_daily_batch([raw])
+        result = build_station_status_daily_batch([raw], date(2026, 8, 12))
 
         self.assertEqual(raw, before)
         self.assertIsInstance(result.warnings, tuple)

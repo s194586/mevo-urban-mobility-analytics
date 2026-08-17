@@ -3,7 +3,13 @@ import json
 import unittest
 from datetime import UTC, datetime
 
-from mevo_transformer import RawSnapshot, RawSnapshotReadError, read_raw_snapshot
+from mevo_transformer import (
+    RawObjectKey,
+    RawSnapshot,
+    RawSnapshotReadError,
+    parse_raw_object_key,
+    read_raw_snapshot,
+)
 
 
 TIMESTAMP = "2026-08-12T12-18-08.484729Z"
@@ -15,6 +21,15 @@ def compressed(payload):
 
 
 class RawReaderTests(unittest.TestCase):
+    def test_parse_raw_object_key_returns_utc_metadata(self):
+        self.assertEqual(
+            parse_raw_object_key(KEY),
+            RawObjectKey(
+                feed_name="station_status",
+                snapshot_ts=datetime(2026, 8, 12, 12, 18, 8, 484729, tzinfo=UTC),
+            ),
+        )
+
     def test_reads_snapshot_and_preserves_payload(self):
         payload = {"data": [{"station_id": "A", "num_bikes_available": 3}]}
         result = read_raw_snapshot(compressed(payload), KEY)

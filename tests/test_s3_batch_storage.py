@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import UTC, date, datetime
 
 from mevo_transformer import (
     DailyBatchResult,
@@ -57,8 +57,8 @@ def result(feed_name):
 
 class S3BatchStorageTests(unittest.TestCase):
     def test_loads_paginated_sorted_gzip_objects_and_preserves_bytes(self):
-        first = "raw/station_status/year=2026/month=08/day=13/b.json.gz"
-        second = "raw/station_status/year=2026/month=08/day=13/a.json.gz"
+        first = "raw/station_status/year=2026/month=08/day=13/2026-08-13T02-00-00.000000Z.json.gz"
+        second = "raw/station_status/year=2026/month=08/day=13/2026-08-13T01-00-00.000000Z.json.gz"
         client = FakeS3(
             pages=[
                 {"Contents": [{"Key": first}, {"Key": "ignored.txt"}], "IsTruncated": True, "NextContinuationToken": "next"},
@@ -74,6 +74,48 @@ class S3BatchStorageTests(unittest.TestCase):
         self.assertEqual(client.list_calls[0], {"Bucket": "bucket", "Prefix": "raw/station_status/year=2026/month=08/day=13/"})
         self.assertEqual(client.list_calls[1]["ContinuationToken"], "next")
         self.assertEqual([call["Key"] for call in client.get_calls], [second, first])
+
+    def test_window_loads_two_utc_partitions_and_obeys_half_open_boundaries(self):
+        before = "raw/station_status/year=2026/month=08/day=15/2026-08-15T21-59-59.999999Z.json.gz"
+        at_start = "raw/station_status/year=2026/month=08/day=15/2026-08-15T22-00-00.000000Z.json.gz"
+        before_end = "raw/station_status/year=2026/month=08/day=16/2026-08-16T21-59-59.999999Z.json.gz"
+        at_end = "raw/station_status/year=2026/month=08/day=16/2026-08-16T22-00-00.000000Z.json.gz"
+        client = FakeS3(
+            pages=[
+                {
+                    "Contents": [{"Key": before}, {"Key": at_start}],
+                    "IsTruncated": True,
+                    "NextContinuationToken": "next",
+                },
+                {"Contents": [], "IsTruncated": False},
+                {
+                    "Contents": [{"Key": before_end}, {"Key": at_end}],
+                    "IsTruncated": False,
+                },
+            ],
+            objects={
+                at_start: b"start",
+                before_end: b"end-minus-epsilon",
+            },
+        )
+
+        loaded = S3BatchStorage("bucket", client).load_raw_objects_for_window(
+            "station_status",
+            datetime(2026, 8, 15, 22, tzinfo=UTC),
+            datetime(2026, 8, 16, 22, tzinfo=UTC),
+        )
+
+        self.assertEqual([item.object_key for item in loaded], [at_start, before_end])
+        self.assertEqual([item.compressed_bytes for item in loaded], [b"start", b"end-minus-epsilon"])
+        self.assertEqual(
+            [call["Prefix"] for call in client.list_calls],
+            [
+                "raw/station_status/year=2026/month=08/day=15/",
+                "raw/station_status/year=2026/month=08/day=15/",
+                "raw/station_status/year=2026/month=08/day=16/",
+            ],
+        )
+        self.assertEqual([call["Key"] for call in client.get_calls], [at_start, before_end])
 
     def test_loads_station_information_prefix_and_empty_prefix(self):
         client = FakeS3(pages=[{"Contents": [], "IsTruncated": False}])
@@ -126,7 +168,7 @@ class S3BatchStorageTests(unittest.TestCase):
         self.assertEqual(call["Body"], b"parquet")
         self.assertEqual(call["ContentType"], "application/vnd.apache.parquet")
         self.assertNotIn("ContentEncoding", call)
-        self.assertEqual(call["Metadata"], {"feed-name": "station_status", "dataset-name": "fact_station_status", "batch-date": "2026-08-13", "snapshot-count": "3", "row-count": "7"})
+        self.assertEqual(call["Metadata"], {"feed-name": "station_status", "dataset-name": "fact_station_status", "local-date": "2026-08-13", "timezone": "Europe/Warsaw", "snapshot-count": "3", "row-count": "7"})
         self.assertTrue(all(isinstance(value, str) for value in call["Metadata"].values()))
         self.assertEqual(stored, StoredCleanedObject("bucket", call["Key"], 7, 7, 3))
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
 from .parquet_writer import (
     write_station_information_parquet,
@@ -32,17 +33,29 @@ class DailyBatchResult:
     """The in-memory output of one feed's daily batch."""
 
     feed_name: str
-    date: date
+    local_date: date
     snapshot_count: int
     row_count: int
     parquet_bytes: bytes
     warnings: tuple[str, ...]
+    timezone_name: str = "Europe/Warsaw"
 
 
-def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> DailyBatchResult:
+def _build_daily_batch(
+    raw_objects: Iterable[RawObject],
+    expected_feed: str,
+    local_date: date,
+    timezone_name: str,
+) -> DailyBatchResult:
     objects = list(raw_objects)
     if not objects:
         raise DailyBatchError(f"cannot build {expected_feed} daily batch from empty input")
+    if isinstance(local_date, datetime) or not isinstance(local_date, date):
+        raise DailyBatchError("local_date must be a date")
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except (TypeError, ValueError) as exc:
+        raise DailyBatchError(f"invalid timezone: {timezone_name!r}") from exc
 
     object_keys: set[str] = set()
     for raw_object in objects:
@@ -62,6 +75,11 @@ def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> 
                 f"expected feed {expected_feed!r}, got {snapshot.feed_name!r} "
                 f"for object {raw_object.object_key}"
             )
+        if snapshot.snapshot_ts.astimezone(timezone).date() != local_date:
+            raise DailyBatchError(
+                f"snapshot {snapshot.snapshot_ts!r} from object {raw_object.object_key} "
+                f"does not belong to local date {local_date!r} in {timezone_name!r}"
+            )
 
         if expected_feed == "station_status":
             transformed = transform_station_status(snapshot.payload, snapshot.snapshot_ts)
@@ -74,10 +92,6 @@ def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> 
             f"{raw_object.object_key}: {warning}" for warning in transformed.warnings
         )
 
-    batch_date = snapshots[0].snapshot_ts.date()
-    if any(snapshot.snapshot_ts.date() != batch_date for snapshot in snapshots[1:]):
-        raise DailyBatchError("all snapshots in a daily batch must belong to one UTC date")
-
     records.sort(key=lambda record: (record["snapshot_ts"], record["station_id"]))
     if expected_feed == "station_status":
         parquet_bytes = write_station_status_parquet(records)
@@ -86,21 +100,30 @@ def _build_daily_batch(raw_objects: Iterable[RawObject], expected_feed: str) -> 
 
     return DailyBatchResult(
         feed_name=expected_feed,
-        date=batch_date,
+        local_date=local_date,
         snapshot_count=len(snapshots),
         row_count=len(records),
         parquet_bytes=parquet_bytes,
         warnings=tuple(warnings),
+        timezone_name=timezone_name,
     )
 
 
-def build_station_status_daily_batch(raw_objects: Iterable[RawObject]) -> DailyBatchResult:
-    """Build one UTC-day station_status Parquet batch in memory."""
+def build_station_status_daily_batch(
+    raw_objects: Iterable[RawObject],
+    local_date: date,
+    timezone_name: str = "Europe/Warsaw",
+) -> DailyBatchResult:
+    """Build one local-day station_status Parquet batch in memory."""
 
-    return _build_daily_batch(raw_objects, "station_status")
+    return _build_daily_batch(raw_objects, "station_status", local_date, timezone_name)
 
 
-def build_station_information_daily_batch(raw_objects: Iterable[RawObject]) -> DailyBatchResult:
-    """Build one UTC-day station_information Parquet batch in memory."""
+def build_station_information_daily_batch(
+    raw_objects: Iterable[RawObject],
+    local_date: date,
+    timezone_name: str = "Europe/Warsaw",
+) -> DailyBatchResult:
+    """Build one local-day station_information Parquet batch in memory."""
 
-    return _build_daily_batch(raw_objects, "station_information")
+    return _build_daily_batch(raw_objects, "station_information", local_date, timezone_name)

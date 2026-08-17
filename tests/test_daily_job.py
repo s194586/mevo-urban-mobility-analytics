@@ -70,7 +70,7 @@ class DailyJobTests(unittest.TestCase):
         result = run_daily_batch("bucket", "station_status", date(2026, 8, 13), client)
 
         self.assertEqual(result.feed_name, "station_status")
-        self.assertEqual(result.date, date(2026, 8, 13))
+        self.assertEqual(result.local_date, date(2026, 8, 13))
         self.assertEqual(result.snapshot_count, 1)
         self.assertEqual(result.row_count, 1)
         self.assertEqual(result.warning_count, 1)
