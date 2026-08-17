@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .parquet_writer import (
     write_station_information_parquet,
@@ -54,7 +54,7 @@ def _build_daily_batch(
         raise DailyBatchError("local_date must be a date")
     try:
         timezone = ZoneInfo(timezone_name)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
         raise DailyBatchError(f"invalid timezone: {timezone_name!r}") from exc
 
     object_keys: set[str] = set()

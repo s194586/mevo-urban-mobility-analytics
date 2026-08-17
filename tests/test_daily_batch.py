@@ -149,6 +149,17 @@ class DailyBatchTests(unittest.TestCase):
                 [first_day, copy.copy(first_day)], date(2026, 8, 12)
             )
 
+    def test_unknown_timezone_is_a_daily_batch_error(self):
+        raw = RawObject(
+            key("station_status", "2026-08-12T01-00-00.000000Z"),
+            compressed(payload([status_station("A")])),
+        )
+
+        with self.assertRaisesRegex(DailyBatchError, "invalid timezone"):
+            build_station_status_daily_batch(
+                [raw], date(2026, 8, 12), "Europe/NoSuchZone"
+            )
+
     def test_one_local_day_can_span_two_utc_partition_dates(self):
         previous_utc_day = RawObject(
             key(

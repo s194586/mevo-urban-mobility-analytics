@@ -27,6 +27,10 @@ class TimeWindowTests(unittest.TestCase):
         start, end = local_day_utc_bounds(date(2026, 10, 25))
         self.assertEqual((end - start).total_seconds(), 25 * 60 * 60)
 
+    def test_unknown_timezone_is_a_value_error(self):
+        with self.assertRaisesRegex(ValueError, "invalid timezone"):
+            local_day_utc_bounds(date(2026, 8, 16), "Europe/NoSuchZone")
+
 
 if __name__ == "__main__":
     unittest.main()

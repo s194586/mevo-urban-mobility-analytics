@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 def local_day_utc_bounds(
@@ -19,7 +19,10 @@ def local_day_utc_bounds(
     if isinstance(local_date, datetime) or not isinstance(local_date, date):
         raise TypeError("local_date must be a date")
 
-    timezone = ZoneInfo(timezone_name)
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+        raise ValueError(f"invalid timezone: {timezone_name!r}") from exc
     next_local_date = local_date + timedelta(days=1)
     start_local = datetime.combine(local_date, time.min, tzinfo=timezone)
     end_local = datetime.combine(next_local_date, time.min, tzinfo=timezone)
