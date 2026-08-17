@@ -25,6 +25,14 @@ class RawSnapshot:
     object_key: str
 
 
+@dataclass(frozen=True)
+class RawObjectKey:
+    """Metadata parsed from an immutable RAW object key."""
+
+    feed_name: str
+    snapshot_ts: datetime
+
+
 _OBJECT_KEY_RE = re.compile(
     r"^raw/(?P<feed_name>[^/]+)/"
     r"year=(?P<year>\d{4})/month=(?P<month>\d{2})/day=(?P<day>\d{2})/"
@@ -34,17 +42,9 @@ _TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%S.%fZ"
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}Z$")
 
 
-def read_raw_snapshot(
-    compressed_bytes: bytes | bytearray | memoryview, object_key: str
-) -> RawSnapshot:
-    """Decode a gzip-compressed JSON RAW snapshot from bytes.
+def parse_raw_object_key(object_key: str) -> RawObjectKey:
+    """Parse a RAW S3 key and return its feed name and UTC snapshot time."""
 
-    The feed contract is intentionally not validated here; syntactically valid
-    JSON of any type is returned unchanged as ``payload``.
-    """
-
-    if not isinstance(compressed_bytes, (bytes, bytearray, memoryview)):
-        raise RawSnapshotReadError("compressed_bytes must be bytes-like")
     if not isinstance(object_key, str):
         raise RawSnapshotReadError("object_key must be a string")
 
@@ -73,6 +73,22 @@ def read_raw_snapshot(
     ):
         raise RawSnapshotReadError("key partition does not match snapshot timestamp")
 
+    return RawObjectKey(feed_name=match.group("feed_name"), snapshot_ts=snapshot_ts)
+
+
+def read_raw_snapshot(
+    compressed_bytes: bytes | bytearray | memoryview, object_key: str
+) -> RawSnapshot:
+    """Decode a gzip-compressed JSON RAW snapshot from bytes.
+
+    The feed contract is intentionally not validated here; syntactically valid
+    JSON of any type is returned unchanged as ``payload``.
+    """
+
+    if not isinstance(compressed_bytes, (bytes, bytearray, memoryview)):
+        raise RawSnapshotReadError("compressed_bytes must be bytes-like")
+    parsed_key = parse_raw_object_key(object_key)
+
     try:
         decoded = gzip.decompress(compressed_bytes).decode("utf-8")
     except (OSError, EOFError, UnicodeDecodeError, zlib.error) as exc:
@@ -83,8 +99,8 @@ def read_raw_snapshot(
         raise RawSnapshotReadError("RAW payload is not valid JSON") from exc
 
     return RawSnapshot(
-        feed_name=match.group("feed_name"),
-        snapshot_ts=snapshot_ts,
+        feed_name=parsed_key.feed_name,
+        snapshot_ts=parsed_key.snapshot_ts,
         payload=payload,
         object_key=object_key,
     )
