@@ -2,6 +2,8 @@
 
 Data rozpoznania: 2026-08-12. Wszystkie zapytania wykonano jednorazowo z nagłówkiem:
 
+> Ten dokument jest migawką źródła z podanej daty. Liczby rekordów, wartości pól i rozmiary odpowiedzi są przykładami punktowymi, a nie stałymi inwariantami działającego pipeline'u.
+
 ```text
 Client-Identifier: s194586-mevo-analytics
 ```
@@ -138,7 +140,7 @@ Rozmiary oznaczają bajty treści JSON odpowiedzi, bez narzutów HTTP. Dla czyte
 | `free_bike_status` | 833 | 296 310 B = 296.31 KB = 0.296 MB | 42.67 MB/dzień | 1.280 GB/miesiąc |
 | **Razem** | — | **556 312 B = 556.31 KB = 0.556 MB** | **80.11 MB/dzień** | **2.403 GB/miesiąc** |
 
-## 10. Wnioski dla przyszłego collectora
+## 10. Wnioski dla collectora
 
 1. Collector powinien najpierw pobierać `gbfs.json` i korzystać z feedów wskazanych w aktualnym payloadzie.
 2. Każde żądanie powinno zawierać `Client-Identifier`; `ttl` wynosi obecnie 15 sekund.
@@ -147,4 +149,3 @@ Rozmiary oznaczają bajty treści JSON odpowiedzi, bez narzutów HTTP. Dla czyte
 5. `current_range_meters` należy traktować jako pole opcjonalne i nullable. Nie należy wyliczać poziomu baterii z samego `max_range_meters`.
 6. Należy przechowywać `last_reported` oraz czas pobrania snapshotu, aby odróżniać wiek danych od czasu wykonania collectora.
 7. Podane rozmiary są wynikiem jednego snapshotu i mogą zmieniać się wraz z liczbą rekordów oraz długością geometrii `station_area`.
-
