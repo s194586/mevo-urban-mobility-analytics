@@ -22,7 +22,7 @@ class DailyBatchError(ValueError):
 
 @dataclass(frozen=True)
 class RawObject:
-    """A compressed RAW object supplied by a future storage layer."""
+    """A compressed RAW object supplied by the storage layer."""
 
     object_key: str
     compressed_bytes: bytes

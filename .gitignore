@@ -46,3 +46,10 @@ packaged.yml
 dist/
 build/
 *.egg-info/
+
+# Local data and pipeline outputs
+/data/
+/raw/
+/cleaned/
+*.parquet
+*.json.gz
