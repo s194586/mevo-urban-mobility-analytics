@@ -152,9 +152,12 @@ $PipArguments = @(
     "-m",
     "pip",
     "install",
+    "--isolated",
     "--disable-pip-version-check",
     "--no-cache-dir",
     "--no-compile",
+    "--index-url",
+    "https://pypi.org/simple",
     "--target",
     $LayerPythonDirectory,
     "--platform",
@@ -167,8 +170,8 @@ $PipArguments = @(
     "--python-version",
     "3.14",
     "--only-binary=:all:",
-    "pyarrow>=25.0,<26",
-    "tzdata"
+    "pyarrow==25.0.1",
+    "tzdata==2026.3"
 )
 
 Write-Output "Installing Linux x86_64 CPython 3.14 layer dependencies..."
@@ -195,6 +198,19 @@ $PyArrowVersion = (
     Select-String -LiteralPath (Join-Path $PyArrowMetadata.FullName "METADATA") -Pattern "^Version:\s*(.+)$" |
         Select-Object -First 1
 ).Matches.Groups[1].Value.Trim()
+$TzdataMetadata = Get-ChildItem -LiteralPath $LayerPythonDirectory -Directory -Filter "tzdata-*.dist-info" |
+    Select-Object -First 1
+if ($null -eq $TzdataMetadata) {
+    throw "Could not find tzdata package metadata in the dependency layer."
+}
+$TzdataVersion = (
+    Select-String -LiteralPath (Join-Path $TzdataMetadata.FullName "METADATA") -Pattern "^Version:\s*(.+)$" |
+        Select-Object -First 1
+).Matches.Groups[1].Value.Trim()
+
+if ($PyArrowVersion -ne "25.0.1" -or $TzdataVersion -ne "2026.3") {
+    throw "Dependency metadata does not match the pinned versions: pyarrow=$PyArrowVersion, tzdata=$TzdataVersion"
+}
 
 New-DeterministicZip -SourceDirectory $CodeBuildDirectory -Destination $CodeZipPath
 New-DeterministicZip -SourceDirectory $LayerBuildDirectory -Destination $LayerZipPath
@@ -211,6 +227,7 @@ Write-Output ("code unpacked size MB: {0:N2}" -f ($CodeUnpackedBytes / 1MB))
 Write-Output ("layer unpacked size MB: {0:N2}" -f ($LayerUnpackedBytes / 1MB))
 Write-Output ("combined unpacked size MB: {0:N2}" -f ($CombinedUnpackedBytes / 1MB))
 Write-Output "PyArrow version: $PyArrowVersion"
+Write-Output "tzdata version: $TzdataVersion"
 
 if ($CombinedUnpackedBytes -ge (250MB)) {
     throw ("Combined unpacked size is {0:N2} MB, which meets or exceeds the 250 MB Lambda ZIP + layers limit." -f ($CombinedUnpackedBytes / 1MB))
