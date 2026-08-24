@@ -53,3 +53,4 @@ build/
 /cleaned/
 *.parquet
 *.json.gz
+.ipynb_checkpoints/
