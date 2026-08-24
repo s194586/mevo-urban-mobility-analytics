@@ -1,37 +1,54 @@
 # Architecture Notes
 
-The current architecture covers two completed foundations: scheduled GBFS ingestion and a daily analytical layer. It deliberately separates preserved source snapshots from rebuildable Parquet datasets so future analysis can evolve without recollecting history.
+The current architecture has three distinct boundaries:
+
+1. an autonomous AWS production pipeline that collects GBFS snapshots and publishes CLEANED Parquet;
+2. a manually executed, read-only analytical notebook layer for Data Quality, EDA, and Feature Engineering;
+3. a future production feature layer that will publish the accepted feature contract for weather enrichment and ML.
+
+RAW and CLEANED remain separate logical data layers. This preserves source evidence while allowing analytical assumptions and feature definitions to evolve without recollecting history.
 
 ## Current Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     GBFS[MEVO GBFS]
-    DYNAMIC[Dynamic schedule<br/>every 10 min]
-    REFERENCE[Reference schedule<br/>daily]
+    COLLECT_SCHEDULE[EventBridge collection schedule]
+    TRANSFORM_SCHEDULE[EventBridge daily schedule]
     COLLECTOR[Collector Lambda]
-    RAW[(S3<br/>raw/)]
-    DAILY[Cleaned schedule<br/>03:30 Europe/Warsaw]
-    TRANSFORMER[Transformer Lambda]
-    CLEANED[(S3<br/>cleaned/)]
+    RAW[(S3 RAW<br/>JSON.gz)]
+    TRANSFORMER[Daily Transformer Lambda]
+    CLEANED[(S3 CLEANED<br/>Parquet)]
     GLUE[Glue Data Catalog]
     ATHENA[Athena]
-    FUTURE[Future EDA / features / ML]
 
-    DYNAMIC -->|dynamic| COLLECTOR
-    REFERENCE -->|reference| COLLECTOR
+    subgraph ANALYTICAL[Current analytical notebooks - manual and read-only]
+        DQ[Data Quality]
+        EDA[EDA]
+        FE[Feature Engineering]
+    end
+
+    FEATURES[Future production<br/>CURATED / FEATURES Parquet]
+    FUTURE[Future weather enrichment<br/>statistical analysis / ML / rebalancing]
+
     GBFS --> COLLECTOR
+    COLLECT_SCHEDULE --> COLLECTOR
     COLLECTOR --> RAW
-    DAILY -->|empty payload| TRANSFORMER
     RAW --> TRANSFORMER
+    TRANSFORM_SCHEDULE --> TRANSFORMER
     TRANSFORMER --> CLEANED
-    GLUE -. catalogs and describes .-> CLEANED
-    GLUE -->|metadata and partition projection| ATHENA
-    CLEANED -->|Parquet data| ATHENA
-    ATHENA --> FUTURE
+    CLEANED --> GLUE
+    GLUE --> ATHENA
+    ATHENA --> DQ
+    ATHENA --> EDA
+    ATHENA --> FE
+    FE --> FEATURES
+    FEATURES --> FUTURE
 ```
 
 The two S3 nodes represent prefixes in the logical data architecture, not a requirement for separate buckets. The current implementation reads and writes both through the same configured bucket.
+
+The collection and transformation path is designed to run autonomously. The three notebooks are analytical consumers of Athena results and are currently executed manually; they do not write to AWS. Their saved outputs are committed so the completed Sprint 2 work can be reviewed without cloud credentials.
 
 ## Ingestion Layer
 
@@ -76,7 +93,7 @@ The current cleaned feeds run sequentially: `station_status` first, then `statio
 
 ## Local-Day and UTC Contract
 
-Time semantics are explicit because a mobility “day” and an object-storage partition do not use the same boundary.
+Time semantics are explicit because a mobility "day" and an object-storage partition do not use the same boundary.
 
 | Item | Contract |
 |---|---|
@@ -111,6 +128,31 @@ The dimension's actual grain is station × reference snapshot, not an enforced s
 
 The repository currently contains the producer implementation and Parquet contracts, but no tracked Glue/Athena DDL or infrastructure-as-code. Those AWS resources were configured and verified separately.
 
+## Analytical Notebook Layer
+
+Sprint 2 uses Athena as the server-side analytical engine and Pandas as a compact result-consumption layer:
+
+- Athena performs partition-pruned scans, aggregations, joins, and window functions over CLEANED Parquet.
+- Pandas receives small analytical results, station-level summaries, diagnostics, and feature availability tables rather than the full fact table.
+- `01_data_quality_and_baseline.ipynb` validates cadence, coverage, duplicates, NULLs, logic/ranges, and scheduler-aware freshness.
+- `02_eda.ipynb` describes temporal, station-level, composition, and geospatial patterns while keeping availability separate from demand claims.
+- `03_feature_engineering.ipynb` defines cadence-safe deltas, flow/activity proxies, validated lags, rolling features, and cyclical time encodings.
+
+The notebooks remain read-only with respect to AWS. Their outputs are intentionally committed for portfolio review. The accepted feature contract is not yet a production table; it is the input to the next architecture step.
+
+## Next Architecture Step
+
+The next production path is documented here but is not implemented in the current sprint:
+
+```text
+CLEANED
+  -> production feature transformation
+  -> S3 CURATED / FEATURES Parquet
+  -> Athena feature table
+```
+
+The production transformation should carry forward the reviewed cadence and leakage rules from the notebook, publish a stable feature schema, and add a validation/quality contract. Weather enrichment, statistical analysis, and ML forecasting should consume that feature table later rather than writing back into the analytical notebooks.
+
 ## Why This Stack Is Sufficient
 
 - **S3** provides durable, low-cost storage for immutable-style RAW history and compact analytical files.
@@ -119,7 +161,7 @@ The repository currently contains the producer implementation and Parquet contra
 - **Glue and Athena** provide schema-on-read SQL without loading the data into another database.
 - **Daily compaction** turns many small snapshots into one scan-efficient object per dataset and local date.
 
-This keeps operational surface area proportional to the project while preserving clear seams for later growth.
+This keeps operational surface area proportional to the project while preserving clear seams for production feature growth.
 
 ## Why Heavier Platforms Are Deferred
 
@@ -132,15 +174,14 @@ This keeps operational surface area proportional to the project while preserving
 
 These technologies are not rejected permanently. They become reasonable when data volume, dependency graphs, latency, concurrency, or educational goals create a concrete requirement.
 
-## Future Analytical and ML Layer
+## Future Production and ML Layer
 
-The next layer remains outside the production data pipeline:
+The future work is intentionally separated from the current analytical notebooks:
 
-1. exploratory analysis and station/time features;
-2. historical weather enrichment;
-3. station profiles and inferred net-flow analysis;
-4. explainable availability forecasting;
-5. rebalancing recommendations;
-6. an optional compact presentation layer.
+1. production CURATED / FEATURES Parquet and an Athena feature table;
+2. historical weather enrichment and statistical analysis;
+3. an explainable availability forecasting baseline;
+4. empty/full risk analysis and rebalancing recommendations;
+5. an optional compact presentation layer.
 
-The RAW/CLEANED boundary and explicit time contract are designed so these experiments can change without changing ingestion or losing source history.
+The RAW/CLEANED boundary and explicit time contract allow these steps to evolve without changing ingestion or losing source history.
