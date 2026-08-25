@@ -1,12 +1,119 @@
 # MEVO Urban Mobility Analytics & Forecasting
 
-MEVO Urban Mobility Analytics & Forecasting is a portfolio-oriented data engineering and future machine learning project built around public GBFS data from the MEVO metropolitan bike-sharing system in Poland. It turns frequent availability snapshots into a reproducible, queryable history while preserving the source payloads needed to rebuild the analytical layer.
+MEVO is an end-to-end AWS data engineering and analytics project built on public GBFS bike-sharing data. The system continuously collects station snapshots, preserves RAW history, transforms it into query-efficient Parquet, exposes the analytical layer through Glue/Athena, and uses Jupyter notebooks for Data Quality, EDA, and Feature Engineering that prepare the data for future forecasting.
 
-The ingestion and cleaned-data pipelines are deployed on AWS. Exploratory analysis, feature engineering, weather enrichment, forecasting, and rebalancing recommendations are the next stages.
+Forecasting is not implemented yet. The next production step is to move the accepted feature contract from the analytical notebook into a CURATED / FEATURES layer.
+
+## Pipeline at a glance
+
+```mermaid
+flowchart LR
+    GBFS[MEVO GBFS]
+    COLLECT_SCHEDULE[EventBridge collection schedule]
+    TRANSFORM_SCHEDULE[EventBridge daily schedule]
+    COLLECTOR[Collector Lambda]
+    RAW[(S3 RAW<br/>JSON.gz)]
+    TRANSFORMER[Daily Transformer Lambda]
+    CLEANED[(S3 CLEANED<br/>Parquet)]
+    GLUE[Glue Data Catalog]
+    ATHENA[Athena]
+
+    subgraph NOTEBOOKS[Manual analytical notebook layer]
+        DQ[Data Quality]
+        EDA[EDA]
+        FE[Feature Engineering]
+    end
+
+    FEATURES[Future production<br/>CURATED / FEATURES]
+    ML[Future weather +<br/>statistical analysis + ML]
+
+    GBFS --> COLLECTOR
+    COLLECT_SCHEDULE --> COLLECTOR
+    COLLECTOR --> RAW
+    RAW --> TRANSFORMER
+    TRANSFORM_SCHEDULE --> TRANSFORMER
+    TRANSFORMER --> CLEANED
+    CLEANED -->|Parquet data| ATHENA
+    GLUE -. catalogs schemas / locations .-> CLEANED
+    GLUE -->|metadata / partition projection| ATHENA
+    ATHENA --> DQ
+    ATHENA --> EDA
+    ATHENA --> FE
+    FE --> FEATURES
+    FEATURES --> ML
+```
+
+The collection and transformation path runs autonomously on AWS. The analytical notebooks are read-only consumers of Athena results and are currently run manually. Notebook outputs are intentionally committed so the completed analysis is visible without AWS credentials.
+
+RAW and CLEANED are logical S3 layers addressed through the same bucket configuration in the current code. Glue stores table metadata; the analytical data remains in S3 and Athena reads it there. See [Architecture Notes](docs/architecture.md) for the design rationale and operational boundaries.
+
+## Current Status
+
+| Phase | Status | Delivered |
+|---|---|---|
+| Sprint 0 - Ingestion | ✅ Complete | Dynamic and reference GBFS collection, gzip RAW storage, Lambda deployment, and schedules |
+| Sprint 1 - Analytical layer | ✅ Complete | DST-aware daily transformation, CLEANED Parquet, Glue external tables, Athena queries, and a verified fact/dimension join |
+| Sprint 2 - Data Quality, EDA & Feature Engineering | ✅ Complete | Three committed analytical notebooks with saved outputs, quality checks, descriptive analysis, and a leakage-aware feature contract |
+| Sprint 3 - Production Feature Layer / ML-ready dataset | ➡️ Next | Move accepted feature logic into production, write S3 CURATED / FEATURES Parquet, expose the feature table through Athena, and add a validation contract |
+
+The deployed transformer runs daily for the previous `Europe/Warsaw` calendar day. Resulting CLEANED partitions have been verified through Athena and the downstream analytical notebooks.
+
+## Analytical notebooks
+
+| Notebook | Purpose | Highlights |
+|---|---|---|
+| [01 - Data Quality & Baseline](notebooks/01_data_quality_and_baseline.ipynb) | Validate the analytical dataset before interpretation | Temporal coverage and cadence, duplicate / NULL / logic checks, scheduler-aware freshness, and a dataset health baseline |
+| [02 - Exploratory Data Analysis](notebooks/02_eda.ipynb) | Describe system, time, station, and spatial patterns | Temporal profiles, station rankings, empty/full behavior, e-bike composition, geospatial maps, and station-level availability |
+| [03 - Feature Engineering](notebooks/03_feature_engineering.ipynb) | Define forecasting-ready station features | Cadence-safe deltas, net flow/activity proxies, validated 10/20/30-minute lags, rolling 30/60-minute features, heatmaps, and a leakage-aware feature contract |
+
+All three notebooks contain saved outputs. They are committed deliberately so a reviewer can inspect the analysis without an AWS account or a live Athena session.
+
+## Current analytical highlights
+
+The following figures come from the committed notebook outputs, not from a new query or notebook execution:
+
+- The Data Quality baseline reports approximately **99.84% temporal coverage** across 1,277 observed fact snapshots.
+- The analytical datasets contain **0 duplicate fact keys**, **0 critical NULLs**, and **0 invalid logical or range values** in the checks performed.
+- The Feature Engineering baseline contains approximately **1.44 million feature rows**; valid transition/delta availability is **99.82%**, with valid 10/20/30-minute lags of approximately **99.82% / 99.71% / 99.59%**.
+- Valid rolling-history availability is approximately **99.59% for 30 minutes** and **99.24% for 60 minutes**.
+- Available-bike composition is approximately **71.56% e-bikes** in the EDA extract.
+- Mean activity proxy is strongest around **16:00**, and **SOP008** is the most active station in the selected Feature Engineering ranking.
+
+These patterns are preliminary because the retained history is still short and continues to grow. Net-flow and activity metrics are proxies based on inventory changes, not ground-truth trip, pickup, or return counts.
+
+## Completed Sprint 2 analytical layer
+
+### Data Quality
+
+The Data Quality notebook checks the assumptions required by downstream analysis:
+
+- approximately 10-minute cadence, with a configured 7-13 minute tolerance band;
+- temporal coverage and estimated missing snapshots;
+- duplicate keys at the declared `(snapshot_ts, station_id)` grain;
+- NULLs, with critical fields separated from optional descriptive fields;
+- logical and range validation for counters, booleans, coordinates, and vehicle totals;
+- scheduler-aware freshness against the latest local day expected from the daily CLEANED job.
+
+### Exploratory Data Analysis
+
+The EDA notebook examines hour, weekday, and weekend profiles; station-level availability; empty and full states; classic-bike versus e-bike composition; station rankings; and geospatial maps. Availability is an inventory-state measure, not a direct measure of demand or utilization. Empty/full observations can also reflect rebalancing, service operations, or station configuration.
+
+### Feature Engineering
+
+The feature notebook defines a station-level, leakage-aware contract from CLEANED data:
+
+- `delta_bikes = current_bikes - previous_bikes` and corresponding classic/e-bike deltas;
+- deltas are emitted only for cadence-valid transitions;
+- `net_inflow_proxy`, `net_outflow_proxy`, and `activity_proxy` derived from inventory changes;
+- validated 10-, 20-, and 30-minute lags based on actual elapsed time;
+- rolling 30- and 60-minute availability and activity features;
+- local-time, weekday, weekend, and cyclical hour/day encodings.
+
+Delta, flow, and activity fields are **net inventory-flow proxies**, not exact rides, pickups, returns, or ground-truth demand. The accepted contract is intended to move into the production feature layer in Sprint 3.
 
 ## What is this?
 
-Bike-sharing availability changes continuously across stations, vehicle types, and time of day. This project collects those changes so they can be studied historically instead of only observed in the live API.
+Bike-sharing availability changes continuously across stations, vehicle types, and time of day. This project captures those changes so they can be studied historically instead of only observed in the live API.
 
 The current system provides the data foundation:
 
@@ -14,52 +121,10 @@ The current system provides the data foundation:
 - immutable-by-application-contract RAW snapshots;
 - daily validation and normalization for the previous Warsaw calendar day;
 - compact Parquet datasets queryable through Athena;
-- explicit time and schema contracts suitable for later analytics and ML.
+- committed Data Quality, EDA, and Feature Engineering analysis;
+- explicit time and schema contracts suitable for the next production feature layer.
 
-Availability snapshots do not directly represent trips. Inferring station flows and producing forecasts are deliberately later analytical steps.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    GBFS[MEVO GBFS]
-    DYNAMIC[EventBridge Scheduler<br/>dynamic every 10 min]
-    REFERENCE[EventBridge Scheduler<br/>reference daily]
-    COLLECTOR[Lambda collector]
-    RAW[(S3 RAW<br/>gzip JSON)]
-    CLEAN_SCHEDULE[EventBridge Scheduler<br/>daily 03:30 Europe/Warsaw]
-    TRANSFORMER[Lambda transformer]
-    CLEANED[(S3 CLEANED<br/>Snappy Parquet)]
-    GLUE[Glue Data Catalog]
-    ATHENA[Athena]
-    ANALYTICS[Future: Jupyter / Pandas<br/>EDA and ML]
-
-    GBFS --> COLLECTOR
-    DYNAMIC -->|dynamic mode| COLLECTOR
-    REFERENCE -->|reference mode| COLLECTOR
-    COLLECTOR --> RAW
-    CLEAN_SCHEDULE -->|empty payload| TRANSFORMER
-    RAW --> TRANSFORMER
-    TRANSFORMER --> CLEANED
-    GLUE -. catalogs external tables .-> CLEANED
-    GLUE -->|schemas and partition projection| ATHENA
-    CLEANED -->|query data directly| ATHENA
-    ATHENA --> ANALYTICS
-```
-
-RAW and CLEANED are logical S3 layers addressed through the same bucket configuration in the current code. Glue stores table metadata; the analytical data remains in S3 and Athena reads it there.
-
-See [Architecture Notes](docs/architecture.md) for the design rationale and operational boundaries.
-
-## Current Status
-
-| Phase | Status | Delivered |
-|---|---|---|
-| Sprint 0 — ingestion | Complete | Dynamic and reference GBFS collection, gzip RAW storage, Lambda deployment, and schedules |
-| Sprint 1 — analytical layer | Functionally complete | DST-aware daily transformation, cleaned Parquet, Glue external tables, Athena queries, and a verified fact/dimension join |
-| Sprint 2 — analysis | Next | Exploratory analysis and feature engineering |
-
-The transformer deployment and its `03:30 Europe/Warsaw` schedule are configured. A real run for an explicitly selected local date has been verified; this documentation pass did not independently confirm the first unattended scheduler-triggered execution, so that remains an operational check rather than a claimed result.
+Availability snapshots do not directly represent trips. Forecasting, historical weather enrichment, and rebalancing recommendations remain future work.
 
 ## Data Pipeline
 
@@ -120,6 +185,8 @@ The transformer uses `ZoneInfo("Europe/Warsaw")`; it never substitutes a fixed U
 - Athena queries `fact_station_status` and `dim_station` directly as Parquet.
 - Partition projection derives date partitions without manually registering each day.
 - Millisecond timestamp precision keeps the files compatible with Athena Engine v3.
+- Athena performs server-side scans, aggregations, joins, and window functions; Pandas receives compact analytical results rather than the full fact table.
+- The notebooks are read-only with respect to AWS and do not publish production data.
 
 The deployed Glue and Athena configuration is an operational resource; this repository currently contains the producer code and data contracts, not infrastructure-as-code or tracked DDL.
 
@@ -144,6 +211,10 @@ Earlier validation found no duplicate `(snapshot_ts, station_id)` fact keys and 
 ├── docs/
 │   ├── architecture.md
 │   └── gbfs_reconnaissance.md
+├── notebooks/
+│   ├── 01_data_quality_and_baseline.ipynb
+│   ├── 02_eda.ipynb
+│   └── 03_feature_engineering.ipynb
 ├── scripts/
 │   ├── build_lambda.ps1
 │   └── build_transformer_lambda.ps1
@@ -175,7 +246,7 @@ python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
 
-Tests use mocked AWS clients and do not require cloud credentials. Any local AWS verification or deployment work should use a least-privilege IAM profile—never root credentials—and no credentials should be committed.
+Tests use mocked AWS clients and do not require cloud credentials. Any local AWS verification or deployment work should use a least-privilege IAM profile - never root credentials - and no credentials should be committed.
 
 ## Deployment Artifacts
 
@@ -202,20 +273,20 @@ The transformer build targets CPython 3.14/Linux x86_64, pins PyArrow `25.0.1` a
 | S3 + Lambda + EventBridge | Fits the current volume with low operational overhead and no continuously running compute |
 | Glue + partition projection | Makes date-partitioned S3 files queryable without a partition-registration job |
 
-Spark, Airflow, Redshift, and relational databases are intentionally deferred until workload scale or orchestration complexity justifies them.
+Spark, Airflow, Redshift, and relational databases are intentionally deferred until workload scale or orchestration complexity justifies them. They are not prerequisites for the current roadmap; any later use can remain educational or follow a measured requirement.
 
 ## Roadmap
 
-1. **Sprint 0 — ingestion:** complete
-2. **Sprint 1 — cleaned analytical layer:** complete
-3. **Sprint 2 — EDA and feature engineering:** next
-4. **Sprint 3 — historical weather integration and statistical analysis**
-5. **Sprint 4 — station profiles and inferred/net-flow analytics**
-6. **Sprint 5 — availability forecasting**
-7. **Sprint 6 — rebalancing recommendations**
-8. **Later, if useful:** a compact dashboard and optional educational Airflow/Spark modules
+1. **Sprint 0 - ingestion:** complete
+2. **Sprint 1 - RAW -> CLEANED / Athena:** complete
+3. **Sprint 2 - Data Quality, EDA & Feature Engineering:** complete
+4. **Sprint 3 - Production CURATED / FEATURES layer:** next
+5. **Sprint 4 - Historical weather enrichment and statistical analysis**
+6. **Sprint 5 - Forecasting baseline / ML**
+7. **Sprint 6 - Empty/full risk and rebalancing recommendations**
+8. **Later - Compact dashboard / presentation layer**
 
 ## Further Documentation
 
-- [Architecture Notes](docs/architecture.md) — current components, contracts, trade-offs, and deferred technologies.
-- [GBFS Reconnaissance](docs/gbfs_reconnaissance.md) — point-in-time source exploration used to shape the collector.
+- [Architecture Notes](docs/architecture.md) - current components, contracts, analytical notebook boundary, next production layer, and deferred technologies.
+- [GBFS Reconnaissance](docs/gbfs_reconnaissance.md) - point-in-time source exploration used to shape the collector.
