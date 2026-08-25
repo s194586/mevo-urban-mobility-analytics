@@ -33,8 +33,9 @@ flowchart LR
     RAW --> TRANSFORMER
     TRANSFORM_SCHEDULE --> TRANSFORMER
     TRANSFORMER --> CLEANED
-    CLEANED --> GLUE
-    GLUE --> ATHENA
+    CLEANED -->|Parquet data| ATHENA
+    GLUE -. catalogs schemas / locations .-> CLEANED
+    GLUE -->|metadata / partition projection| ATHENA
     ATHENA --> DQ
     ATHENA --> EDA
     ATHENA --> FE
@@ -55,7 +56,7 @@ RAW and CLEANED are logical S3 layers addressed through the same bucket configur
 | Sprint 2 - Data Quality, EDA & Feature Engineering | ✅ Complete | Three committed analytical notebooks with saved outputs, quality checks, descriptive analysis, and a leakage-aware feature contract |
 | Sprint 3 - Production Feature Layer / ML-ready dataset | ➡️ Next | Move accepted feature logic into production, write S3 CURATED / FEATURES Parquet, expose the feature table through Athena, and add a validation contract |
 
-The transformer deployment and its `03:30 Europe/Warsaw` schedule are configured. A real run for an explicitly selected local date has been verified; this documentation pass did not independently confirm the first unattended scheduler-triggered execution, so that remains an operational check rather than a claimed result.
+The deployed transformer runs daily for the previous `Europe/Warsaw` calendar day. Resulting CLEANED partitions have been verified through Athena and the downstream analytical notebooks.
 
 ## Analytical notebooks
 

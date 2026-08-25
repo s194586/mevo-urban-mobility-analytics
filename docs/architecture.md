@@ -37,8 +37,9 @@ flowchart TB
     RAW --> TRANSFORMER
     TRANSFORM_SCHEDULE --> TRANSFORMER
     TRANSFORMER --> CLEANED
-    CLEANED --> GLUE
-    GLUE --> ATHENA
+    CLEANED -->|Parquet data| ATHENA
+    GLUE -. catalogs schemas / locations .-> CLEANED
+    GLUE -->|metadata / partition projection| ATHENA
     ATHENA --> DQ
     ATHENA --> EDA
     ATHENA --> FE
