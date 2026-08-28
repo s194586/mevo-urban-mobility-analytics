@@ -18,5 +18,19 @@ dependencies = [
     "tzdata",
 ]
 
+[project.optional-dependencies]
+analytics = [
+    "awswrangler",
+    "pandas",
+    "numpy",
+    "matplotlib",
+    "requests",
+    "scipy",
+    "statsmodels",
+    "jupyterlab",
+    "ipykernel",
+    "ipython",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
