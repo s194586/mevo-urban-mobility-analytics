@@ -17,6 +17,7 @@ flowchart LR
     CLEANED[(S3 CLEANED<br/>Parquet)]
     GLUE[Glue Data Catalog]
     ATHENA[Athena]
+    OPEN_METEO[Open-Meteo Historical Weather API]
 
     subgraph NOTEBOOKS[Manual analytical notebook layer]
         DQ[Data Quality]
@@ -38,9 +39,10 @@ flowchart LR
     GLUE -. catalogs schemas / locations .-> CLEANED
     GLUE -->|metadata / partition projection| ATHENA
     ATHENA --> DQ
-    DQ --> EDA
-    EDA --> FE
-    FE --> WEATHER
+    ATHENA --> EDA
+    ATHENA --> FE
+    ATHENA --> WEATHER
+    OPEN_METEO --> WEATHER
     WEATHER --> FEATURES
     FEATURES --> ML
 ```
