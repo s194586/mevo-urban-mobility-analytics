@@ -1,8 +1,8 @@
 # MEVO Urban Mobility Analytics & Forecasting
 
-MEVO is an end-to-end AWS data engineering and analytics project built on public GBFS bike-sharing data. The system continuously collects station snapshots, preserves RAW history, transforms it into query-efficient Parquet, exposes the analytical layer through Glue/Athena, and uses Jupyter notebooks for Data Quality, EDA, and Feature Engineering that prepare the data for future forecasting.
+MEVO is an end-to-end AWS data engineering and analytics project built on public GBFS bike-sharing data. The system continuously collects station snapshots, preserves RAW history, transforms it into query-efficient Parquet, exposes the analytical layer through Glue/Athena, and uses Jupyter notebooks for Data Quality, EDA, Feature Engineering, and a preliminary Weather Enrichment & Statistical Analysis baseline.
 
-Forecasting is not implemented yet. The next production step is to move the accepted feature contract from the analytical notebook into a CURATED / FEATURES layer.
+Forecasting is not implemented yet. Sprint 3 currently provides a short-window, observational weather/statistical baseline; final feature decisions remain deferred until the controlled approximately 30-day rerun. The next production step is a CURATED / FEATURES layer informed by that review.
 
 ## Pipeline at a glance
 
@@ -17,15 +17,17 @@ flowchart LR
     CLEANED[(S3 CLEANED<br/>Parquet)]
     GLUE[Glue Data Catalog]
     ATHENA[Athena]
+    OPEN_METEO[Open-Meteo Historical Weather API]
 
     subgraph NOTEBOOKS[Manual analytical notebook layer]
         DQ[Data Quality]
         EDA[EDA]
         FE[Feature Engineering]
+        WEATHER[Weather Enrichment &<br/>Statistical Analysis]
     end
 
     FEATURES[Future production<br/>CURATED / FEATURES]
-    ML[Future weather +<br/>statistical analysis + ML]
+    ML[Future Forecasting / ML]
 
     GBFS --> COLLECTOR
     COLLECT_SCHEDULE --> COLLECTOR
@@ -39,7 +41,9 @@ flowchart LR
     ATHENA --> DQ
     ATHENA --> EDA
     ATHENA --> FE
-    FE --> FEATURES
+    ATHENA --> WEATHER
+    OPEN_METEO --> WEATHER
+    WEATHER --> FEATURES
     FEATURES --> ML
 ```
 
@@ -53,8 +57,11 @@ RAW and CLEANED are logical S3 layers addressed through the same bucket configur
 |---|---|---|
 | Sprint 0 - Ingestion | ✅ Complete | Dynamic and reference GBFS collection, gzip RAW storage, Lambda deployment, and schedules |
 | Sprint 1 - Analytical layer | ✅ Complete | DST-aware daily transformation, CLEANED Parquet, Glue external tables, Athena queries, and a verified fact/dimension join |
-| Sprint 2 - Data Quality, EDA & Feature Engineering | ✅ Complete | Three committed analytical notebooks with saved outputs, quality checks, descriptive analysis, and a leakage-aware feature contract |
-| Sprint 3 - Production Feature Layer / ML-ready dataset | ➡️ Next | Move accepted feature logic into production, write S3 CURATED / FEATURES Parquet, expose the feature table through Athena, and add a validation contract |
+| Sprint 2 - Data Quality, EDA & Feature Engineering | ✅ Complete | Notebooks 01–03 with saved outputs, quality checks, descriptive analysis, and a leakage-aware feature contract |
+| Sprint 3 - Weather & Statistical Analysis | In progress: preliminary weather/statistical baseline completed | Historical Open-Meteo enrichment, system-hour weather join, DQ, descriptive statistics, and preliminary feature-selection evidence; final conclusions deferred |
+| Sprint 4 - Production CURATED / FEATURES layer | Planned | Move the reviewed feature contract into production storage and validation |
+| Sprint 5 - Forecasting baseline / ML | Planned | Establish a forecasting baseline after the production feature layer is ready |
+| Sprint 6 - Empty/full risk + rebalancing recommendations | Planned | Add operational risk indicators and recommendations |
 
 The deployed transformer runs daily for the previous `Europe/Warsaw` calendar day. Resulting CLEANED partitions have been verified through Athena and the downstream analytical notebooks.
 
@@ -65,8 +72,9 @@ The deployed transformer runs daily for the previous `Europe/Warsaw` calendar da
 | [01 - Data Quality & Baseline](notebooks/01_data_quality_and_baseline.ipynb) | Validate the analytical dataset before interpretation | Temporal coverage and cadence, duplicate / NULL / logic checks, scheduler-aware freshness, and a dataset health baseline |
 | [02 - Exploratory Data Analysis](notebooks/02_eda.ipynb) | Describe system, time, station, and spatial patterns | Temporal profiles, station rankings, empty/full behavior, e-bike composition, geospatial maps, and station-level availability |
 | [03 - Feature Engineering](notebooks/03_feature_engineering.ipynb) | Define forecasting-ready station features | Cadence-safe deltas, net flow/activity proxies, validated 10/20/30-minute lags, rolling 30/60-minute features, heatmaps, and a leakage-aware feature contract |
+| [04 - Weather & Statistical Analysis](notebooks/04_weather_and_statistical_analysis.ipynb) | Historical weather enrichment and interpretative statistical feature-selection baseline | Open-Meteo Historical Weather API with pinned ECMWF IFS, representative network weather point, UTC system-hour join, weather DQ, precipitation / temperature / wind analysis, Pearson/Spearman, block-bootstrap uncertainty, temporal-only M0 versus temporal+weather M1, OLS with HAC standard errors, and preliminary KEEP/MAYBE/DROP evidence framework |
 
-All three notebooks contain saved outputs. They are committed deliberately so a reviewer can inspect the analysis without an AWS account or a live Athena session.
+All four analytical notebooks contain saved outputs. They are committed deliberately so a reviewer can inspect the analysis without an AWS account or a live Athena session. `activity_proxy` remains an inventory-change proxy, not a ride count or ground-truth demand.
 
 ## Current analytical highlights
 
@@ -80,6 +88,10 @@ The following figures come from the committed notebook outputs, not from a new q
 - Mean activity proxy is strongest around **16:00**, and **SOP008** is the most active station in the selected Feature Engineering ranking.
 
 These patterns are preliminary because the retained history is still short and continues to grow. Net-flow and activity metrics are proxies based on inventory changes, not ground-truth trip, pickup, or return counts.
+
+### Preliminary Sprint 3 highlights
+
+The committed preliminary Weather & Statistical Analysis run covers 212 complete system-hours. MEVO and weather matched one-to-one for all 212 UTC hours (100% join coverage), with no missing core weather variables. The temporal-only M0 baseline has adjusted R² ≈ 0.877; temporal + weather M1 has adjusted R² ≈ 0.887, so weather adds approximately +0.010 adjusted R² beyond temporal controls. Temperature currently shows the clearest preliminary signal. These conclusions are observational and preliminary because the historical window is short and summer-only; final feature decisions are deferred until the controlled approximately 30-day rerun.
 
 ## Completed Sprint 2 analytical layer
 
@@ -109,7 +121,7 @@ The feature notebook defines a station-level, leakage-aware contract from CLEANE
 - rolling 30- and 60-minute availability and activity features;
 - local-time, weekday, weekend, and cyclical hour/day encodings.
 
-Delta, flow, and activity fields are **net inventory-flow proxies**, not exact rides, pickups, returns, or ground-truth demand. The accepted contract is intended to move into the production feature layer in Sprint 3.
+Delta, flow, and activity fields are **net inventory-flow proxies**, not exact rides, pickups, returns, or ground-truth demand. The reviewed contract is intended to move into the production feature layer in Sprint 4.
 
 ## What is this?
 
@@ -121,10 +133,10 @@ The current system provides the data foundation:
 - immutable-by-application-contract RAW snapshots;
 - daily validation and normalization for the previous Warsaw calendar day;
 - compact Parquet datasets queryable through Athena;
-- committed Data Quality, EDA, and Feature Engineering analysis;
+- committed Data Quality, EDA, Feature Engineering, and preliminary Weather & Statistical Analysis;
 - explicit time and schema contracts suitable for the next production feature layer.
 
-Availability snapshots do not directly represent trips. Forecasting, historical weather enrichment, and rebalancing recommendations remain future work.
+Availability snapshots do not directly represent trips. Forecasting and rebalancing recommendations remain future work; historical weather enrichment is currently available as a preliminary statistical baseline.
 
 ## Data Pipeline
 
@@ -214,7 +226,8 @@ Earlier validation found no duplicate `(snapshot_ts, station_id)` fact keys and 
 ├── notebooks/
 │   ├── 01_data_quality_and_baseline.ipynb
 │   ├── 02_eda.ipynb
-│   └── 03_feature_engineering.ipynb
+│   ├── 03_feature_engineering.ipynb
+│   └── 04_weather_and_statistical_analysis.ipynb
 ├── scripts/
 │   ├── build_lambda.ps1
 │   └── build_transformer_lambda.ps1
@@ -237,6 +250,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e .
+```
+
+For the analytical notebook environment, install the optional analytics dependencies:
+
+```powershell
+python -m pip install -e ".[analytics]"
 ```
 
 The editable install and test commands are otherwise platform-independent:
@@ -280,10 +299,10 @@ Spark, Airflow, Redshift, and relational databases are intentionally deferred un
 1. **Sprint 0 - ingestion:** complete
 2. **Sprint 1 - RAW -> CLEANED / Athena:** complete
 3. **Sprint 2 - Data Quality, EDA & Feature Engineering:** complete
-4. **Sprint 3 - Production CURATED / FEATURES layer:** next
-5. **Sprint 4 - Historical weather enrichment and statistical analysis**
-6. **Sprint 5 - Forecasting baseline / ML**
-7. **Sprint 6 - Empty/full risk and rebalancing recommendations**
+4. **Sprint 3 - Weather Enrichment & Statistical Analysis:** in progress; preliminary baseline completed
+5. **Sprint 4 - Production CURATED / FEATURES layer:** planned
+6. **Sprint 5 - Forecasting baseline / ML:** planned
+7. **Sprint 6 - Empty/full risk and rebalancing recommendations:** planned
 8. **Later - Compact dashboard / presentation layer**
 
 ## Further Documentation
