@@ -1,8 +1,10 @@
-# MEVO Urban Mobility Analytics & Forecasting
+# MEVO Urban Mobility Analytics
 
-MEVO is an end-to-end AWS data engineering and analytics project built on public GBFS bike-sharing data. The system continuously collects station snapshots, preserves RAW history, transforms it into query-efficient Parquet, exposes the analytical layer through Glue/Athena, and uses Jupyter notebooks for Data Quality, EDA, Feature Engineering, and a preliminary Weather Enrichment & Statistical Analysis baseline.
+**Historical analytics V1 — COMPLETE**
 
-Forecasting is not implemented yet. Sprint 3 currently provides a short-window, observational weather/statistical baseline; final feature decisions remain deferred until the controlled approximately 30-day rerun. The next production step is a CURATED / FEATURES layer informed by that review.
+MEVO is an end-to-end AWS data engineering and analytics project built on public GBFS bike-sharing data. The system continuously collects station snapshots, preserves RAW history, transforms it into query-efficient Parquet, exposes the analytical layer through Glue/Athena, and uses Jupyter notebooks for Data Quality, EDA, leakage-aware Feature Engineering, historical Weather Enrichment, and statistical feature validation.
+
+V1 intentionally closes at reproducible historical analytics and statistical validation. Forecasting and ML have not been implemented; they are optional future extensions rather than unfinished V1 work.
 
 ## Pipeline at a glance
 
@@ -43,8 +45,8 @@ flowchart LR
     ATHENA --> FE
     ATHENA --> WEATHER
     OPEN_METEO --> WEATHER
-    WEATHER --> FEATURES
-    FEATURES --> ML
+    WEATHER -. optional future extension .-> FEATURES
+    FEATURES -. optional future extension .-> ML
 ```
 
 The collection and transformation path runs autonomously on AWS. The analytical notebooks are read-only consumers of Athena results and are currently run manually. Notebook outputs are intentionally committed so the completed analysis is visible without AWS credentials.
@@ -58,12 +60,19 @@ RAW and CLEANED are logical S3 layers addressed through the same bucket configur
 | Sprint 0 - Ingestion | ✅ Complete | Dynamic and reference GBFS collection, gzip RAW storage, Lambda deployment, and schedules |
 | Sprint 1 - Analytical layer | ✅ Complete | DST-aware daily transformation, CLEANED Parquet, Glue external tables, Athena queries, and a verified fact/dimension join |
 | Sprint 2 - Data Quality, EDA & Feature Engineering | ✅ Complete | Notebooks 01–03 with saved outputs, quality checks, descriptive analysis, and a leakage-aware feature contract |
-| Sprint 3 - Weather & Statistical Analysis | In progress: preliminary weather/statistical baseline completed | Historical Open-Meteo enrichment, system-hour weather join, DQ, descriptive statistics, and preliminary feature-selection evidence; final conclusions deferred |
-| Sprint 4 - Production CURATED / FEATURES layer | Planned | Move the reviewed feature contract into production storage and validation |
-| Sprint 5 - Forecasting baseline / ML | Planned | Establish a forecasting baseline after the production feature layer is ready |
-| Sprint 6 - Empty/full risk + rebalancing recommendations | Planned | Add operational risk indicators and recommendations |
+| Sprint 3 - Weather & Statistical Analysis | ✅ Complete | Historical Open-Meteo enrichment, system-hour weather join, DQ, descriptive statistics, M0/M1 comparison, and final feature decisions |
 
 The deployed transformer runs daily for the previous `Europe/Warsaw` calendar day. Resulting CLEANED partitions have been verified through Athena and the downstream analytical notebooks.
+
+## Final V1 analytical snapshot
+
+- Approximately **68 days** of history, from 2026-08-12 through 2026-10-19.
+- **8,481,238** fact rows across **9,877** observed station snapshots and approximately **873 stations**.
+- Approximately **99.58%** temporal snapshot coverage, with 42 estimated missing snapshots retained as an explicit DQ finding.
+- **1,647 matched MEVO system-hours** in the final weather analysis.
+- Complete historical weather coverage for the frozen **1,653-hour** window; the six unmatched hours originate from missing MEVO system-hours, not weather retrieval.
+
+Station participation changes over time, so these totals do not imply that every station reports continuously.
 
 ## Analytical notebooks
 
@@ -72,28 +81,42 @@ The deployed transformer runs daily for the previous `Europe/Warsaw` calendar da
 | [01 - Data Quality & Baseline](notebooks/01_data_quality_and_baseline.ipynb) | Validate the analytical dataset before interpretation | Temporal coverage and cadence, duplicate / NULL / logic checks, scheduler-aware freshness, and a dataset health baseline |
 | [02 - Exploratory Data Analysis](notebooks/02_eda.ipynb) | Describe system, time, station, and spatial patterns | Temporal profiles, station rankings, empty/full behavior, e-bike composition, geospatial maps, and station-level availability |
 | [03 - Feature Engineering](notebooks/03_feature_engineering.ipynb) | Define forecasting-ready station features | Cadence-safe deltas, net flow/activity proxies, validated 10/20/30-minute lags, rolling 30/60-minute features, heatmaps, and a leakage-aware feature contract |
-| [04 - Weather & Statistical Analysis](notebooks/04_weather_and_statistical_analysis.ipynb) | Historical weather enrichment and interpretative statistical feature-selection baseline | Open-Meteo Historical Weather API with pinned ECMWF IFS, representative network weather point, UTC system-hour join, weather DQ, precipitation / temperature / wind analysis, Pearson/Spearman, block-bootstrap uncertainty, temporal-only M0 versus temporal+weather M1, OLS with HAC standard errors, and preliminary KEEP/MAYBE/DROP evidence framework |
+| [04 - Weather & Statistical Analysis](notebooks/04_weather_and_statistical_analysis.ipynb) | Historical weather enrichment and final statistical feature validation | Open-Meteo Historical Weather API with pinned ECMWF IFS, representative network weather point, UTC system-hour join, weather DQ, precipitation / temperature / wind analysis, Pearson/Spearman, block-bootstrap uncertainty, temporal-only M0 versus temporal+weather M1, OLS with HAC standard errors, and final KEEP/MAYBE/DROP decisions |
 
 All four analytical notebooks contain saved outputs. They are committed deliberately so a reviewer can inspect the analysis without an AWS account or a live Athena session. `activity_proxy` remains an inventory-change proxy, not a ride count or ground-truth demand.
 
-## Current analytical highlights
+## Final analytical highlights
 
 The following figures come from the committed notebook outputs, not from a new query or notebook execution:
 
-- The Data Quality baseline reports approximately **99.84% temporal coverage** across 1,277 observed fact snapshots.
+- The Data Quality baseline reports approximately **99.58% temporal coverage** across 9,877 observed fact snapshots; the small number of missing snapshots is retained as a finding rather than treated as proof of perfect coverage.
 - The analytical datasets contain **0 duplicate fact keys**, **0 critical NULLs**, and **0 invalid logical or range values** in the checks performed.
-- The Feature Engineering baseline contains approximately **1.44 million feature rows**; valid transition/delta availability is **99.82%**, with valid 10/20/30-minute lags of approximately **99.82% / 99.71% / 99.59%**.
-- Valid rolling-history availability is approximately **99.59% for 30 minutes** and **99.24% for 60 minutes**.
-- Available-bike composition is approximately **71.56% e-bikes** in the EDA extract.
-- Mean activity proxy is strongest around **16:00**, and **SOP008** is the most active station in the selected Feature Engineering ranking.
+- Availability is highest around **04:00** and lowest around **17:00**; weekday average availability is slightly higher than weekend availability.
+- Available-bike composition is approximately **69.94% e-bikes**, and station behavior is strongly heterogeneous.
+- Feature Engineering contains **8,481,238 feature rows** and retains approximately **99.6–99.9%** valid coverage across cadence, lag, and rolling features.
+- Mean `activity_proxy` is strongest around **16:00**; station 4301 leads the selected activity ranking in the saved output.
+- The temporal-only weather baseline achieves adjusted R² ≈ **0.809**, while temporal + core weather reaches ≈ **0.844**, adding approximately **+0.035 adjusted R²** beyond temporal controls.
+- Temperature, precipitation, wind speed, and relative humidity form the minimal core retrospective weather block. Pressure, circular wind direction, and sunshine duration remain optional candidates; no weather feature receives a definitive DROP in V1.
 
-These patterns are preliminary because the retained history is still short and continues to grow. Net-flow and activity metrics are proxies based on inventory changes, not ground-truth trip, pickup, or return counts.
+These results are observational and limited to an approximately 68-day late-summer-to-autumn window. Availability is not direct demand, and net-flow and activity metrics are inventory-change proxies rather than ground-truth trip, pickup, return, or demand counts.
 
-### Preliminary Sprint 3 highlights
+### Final Sprint 3 result
 
-The committed preliminary Weather & Statistical Analysis run covers 212 complete system-hours. MEVO and weather matched one-to-one for all 212 UTC hours (100% join coverage), with no missing core weather variables. The temporal-only M0 baseline has adjusted R² ≈ 0.877; temporal + weather M1 has adjusted R² ≈ 0.887, so weather adds approximately +0.010 adjusted R² beyond temporal controls. Temperature currently shows the clearest preliminary signal. These conclusions are observational and preliminary because the historical window is short and summer-only; final feature decisions are deferred until the controlled approximately 30-day rerun.
+The final Weather & Statistical Analysis uses 1,647 matched MEVO system-hours from a frozen 1,653-hour window, with complete weather coverage and no missing core weather values. Temporal structure explains most observed variation, while the core weather block adds meaningful incremental statistical information within this historical window. This is a controlled association, not evidence that weather causes demand.
 
-## Completed Sprint 2 analytical layer
+| Feature | Final V1 decision |
+|---|---|
+| Temperature | KEEP |
+| Precipitation | KEEP |
+| Wind speed | KEEP |
+| Relative humidity | KEEP |
+| Pressure | MAYBE |
+| Circular wind direction | MAYBE |
+| Sunshine duration | MAYBE |
+
+MAYBE means the feature is outside the minimal core set but remains a documented extension candidate. Historical preceding-hour precipitation and sunshine values are not automatically inference-safe for a future forecasting system; future use would require lagged known observations or forecast weather.
+
+## Completed V1 analytical layer
 
 ### Data Quality
 
@@ -121,7 +144,7 @@ The feature notebook defines a station-level, leakage-aware contract from CLEANE
 - rolling 30- and 60-minute availability and activity features;
 - local-time, weekday, weekend, and cyclical hour/day encodings.
 
-Delta, flow, and activity fields are **net inventory-flow proxies**, not exact rides, pickups, returns, or ground-truth demand. The reviewed contract is intended to move into the production feature layer in Sprint 4.
+Delta, flow, and activity fields are **net inventory-flow proxies**, not exact rides, pickups, returns, or ground-truth demand. Production materialization of the reviewed contract is an optional future extension.
 
 ## What is this?
 
@@ -133,10 +156,10 @@ The current system provides the data foundation:
 - immutable-by-application-contract RAW snapshots;
 - daily validation and normalization for the previous Warsaw calendar day;
 - compact Parquet datasets queryable through Athena;
-- committed Data Quality, EDA, Feature Engineering, and preliminary Weather & Statistical Analysis;
-- explicit time and schema contracts suitable for the next production feature layer.
+- committed Data Quality, EDA, Feature Engineering, and final Weather & Statistical Analysis;
+- explicit time and schema contracts that can support an optional future production feature layer.
 
-Availability snapshots do not directly represent trips. Forecasting and rebalancing recommendations remain future work; historical weather enrichment is currently available as a preliminary statistical baseline.
+Availability snapshots do not directly represent trips. Historical analytics V1 is complete; forecasting, risk modelling, and rebalancing recommendations remain optional future extensions.
 
 ## Data Pipeline
 
@@ -294,18 +317,24 @@ The transformer build targets CPython 3.14/Linux x86_64, pins PyArrow `25.0.1` a
 
 Spark, Airflow, Redshift, and relational databases are intentionally deferred until workload scale or orchestration complexity justifies them. They are not prerequisites for the current roadmap; any later use can remain educational or follow a measured requirement.
 
-## Roadmap
+## V1 completion status
 
 1. **Sprint 0 - ingestion:** complete
-2. **Sprint 1 - RAW -> CLEANED / Athena:** complete
+2. **Sprint 1 - RAW → CLEANED / Athena:** complete
 3. **Sprint 2 - Data Quality, EDA & Feature Engineering:** complete
-4. **Sprint 3 - Weather Enrichment & Statistical Analysis:** in progress; preliminary baseline completed
-5. **Sprint 4 - Production CURATED / FEATURES layer:** planned
-6. **Sprint 5 - Forecasting baseline / ML:** planned
-7. **Sprint 6 - Empty/full risk and rebalancing recommendations:** planned
-8. **Later - Compact dashboard / presentation layer**
+4. **Sprint 3 - Weather Enrichment & Statistical Analysis:** complete
+
+## Optional future extensions
+
+- Production CURATED / FEATURES materialization
+- Forecasting / ML target definition and inference-safe weather representation
+- Empty/full risk modelling
+- Operational rebalancing recommendations
+- Dashboard / presentation layer
+
+None of these extensions is required for the completed historical analytics V1.
 
 ## Further Documentation
 
-- [Architecture Notes](docs/architecture.md) - current components, contracts, analytical notebook boundary, next production layer, and deferred technologies.
+- [Architecture Notes](docs/architecture.md) - current components, contracts, analytical notebook boundary, and deferred technologies.
 - [GBFS Reconnaissance](docs/gbfs_reconnaissance.md) - point-in-time source exploration used to shape the collector.
